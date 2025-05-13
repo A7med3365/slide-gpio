@@ -25,7 +25,7 @@ def parse_color(color_str):
 def main():
     # Script-level configuration variables
     DEFAULT_TEXT = "Hello from the script!\nThis is line 2.\nEnjoy scrolling!"
-    DEFAULT_SPEED = 20  # pixels per frame
+    DEFAULT_SPEED = 40  # pixels per frame
     DEFAULT_FONT_SIZE = 500  # 0 for auto-calculate
     DEFAULT_FONT_COLOR = "white"  # e.g., "white", "255,0,0"
     DEFAULT_BG_COLOR = "black"  # e.g., "black", "0,0,128"
