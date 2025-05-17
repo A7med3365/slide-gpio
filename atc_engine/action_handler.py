@@ -56,11 +56,27 @@ class ActionHandler:
 
             # Check for media triggers
             for media_name, media_config in self._config["media"].items():
+                if "button" not in media_config: # Ensure button key exists
+                    continue
+                
                 buttons = media_config["button"] if isinstance(media_config["button"], list) else [media_config["button"]]
                 button_set = tuple(sorted(buttons))
                 
                 if button_set in new_combinations:
-                    self.execute_media(media_name, media_config)
+                    # Case 1: Button for the *currently active* media is pressed again
+                    if media_name == self._current_media:
+                        print(f"[ActionHandler] Button for active media '{media_name}' pressed again. Returning to default.")
+                        self.stop_current() # This will trigger default media display
+                        # Since we are returning to default, we might not want other combinations to trigger immediately.
+                        # Consider if a break or a flag is needed if multiple combinations are met.
+                        # For now, let stop_current handle it and proceed.
+                    # Case 2: No media is active, or the default media is active, and a new media is triggered
+                    elif not self._current_media or self._current_media == self._config.get('settings', {}).get('default_media_name'):
+                        self.execute_media(media_name, media_config)
+                    # Case 3: A different media is active, and a new media is triggered
+                    else: # self._current_media is active and is not media_name and not default
+                        print(f"[ActionHandler] Switching from '{self._current_media}' to '{media_name}'.")
+                        self.execute_media(media_name, media_config) # execute_media handles stopping the old one
 
             # Check for action triggers
             for action_name, action_config in self._config["actions"].items():
@@ -79,6 +95,10 @@ class ActionHandler:
 
     def execute_media(self, media_name: str, media_config: Dict[str, Any]) -> None:
         """Execute a media display action."""
+        if self._current_media == media_name: # Add this check
+            print(f"[Media] '{media_name}' is already active.") # Optional: log this
+            return # Add this return
+
         old_media = self._current_media
         self._current_media = media_name
 
@@ -121,15 +141,38 @@ class ActionHandler:
             print(f"[Action] Unknown action mode: {mode}")
 
     def stop_current(self) -> None:
-        """Stop current media and action."""
+        """Stop current media and action, then display default media if configured."""
         with self._lock:
+            stopped_media = False
             if self._current_media:
                 print(f"[Media] Stopping: {self._current_media}")
+                # Add any specific media stop logic here if needed (e.g., kill process)
                 self._current_media = None
+                stopped_media = True
             
             if self._current_action:
                 print(f"[Action] Stopping: {self._current_action}")
+                # Add any specific action stop logic here
                 self._current_action = None
+
+            # If any media was stopped or no media was active, try to show default
+            if stopped_media or not self._current_media : # Ensure default shows if nothing was active too
+                default_media_name = self._config.get('settings', {}).get('default_media_name')
+                if default_media_name and default_media_name in self._config.get('media', {}):
+                    # Avoid re-triggering if default is already what we intended to stop to.
+                    # This check is now in execute_media, so direct call is fine.
+                    print(f"[ActionHandler] Reverting to default media: {default_media_name}")
+                    default_media_config = self._config['media'][default_media_name]
+                    # Temporarily set _current_media to None to allow execute_media to run the default
+                    # This is a bit of a hack; execute_media should ideally handle this better.
+                    # For now, this ensures the default media actually plays.
+                    # The check `if self._current_media == media_name:` in execute_media
+                    # would prevent it if _current_media was just set to None and default_media_name was also None (edge case).
+                    # However, default_media_name should always be a valid string.
+                    # Let's assume execute_media's check is sufficient.
+                    self.execute_media(default_media_name, default_media_config)
+                else:
+                    print("[ActionHandler] No default media configured or found to revert to.")
 
     def cleanup(self) -> None:
         """Clean up any resources."""

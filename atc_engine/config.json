@@ -90,6 +90,7 @@
     "settings": {
         "debounce_time": 0.5,
         "poll_interval": 0.05,
-        "default_combo_hold_time": 1.0
+        "default_combo_hold_time": 1.0,
+        "default_media_name": "home"
     }
 }

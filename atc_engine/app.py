@@ -60,6 +60,16 @@ class Application:
         
         # Start GPIO monitoring
         self._gpio_handler.start()
+
+        # Display default media
+        if self._action_handler and self._config:
+            default_media_name = self._config.get('settings', {}).get('default_media_name')
+            if default_media_name and default_media_name in self._config.get('media', {}):
+                default_media_config = self._config['media'][default_media_name]
+                print(f"[App] Displaying default media: {default_media_name}")
+                self._action_handler.execute_media(default_media_name, default_media_config)
+            else:
+                print(f"[App] Warning: Default media '{default_media_name}' not found in config.")
         
         try:
             # Main application loop
