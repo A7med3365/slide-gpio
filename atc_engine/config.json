@@ -99,6 +99,10 @@
         "default_combo_hold_time": 1.0,
         "default_media_name": "home",
         "image_flash_duty_cycle": 0.75,
-        "image_flash_duration": 1.0
+        "image_flash_duration": 1.0,
+        "scroll_text_speed": 2,
+        "scroll_text_font_size": 60,
+        "scroll_text_font_color": "yellow",
+        "scroll_text_bg_color": "0,0,128"
     }
 }

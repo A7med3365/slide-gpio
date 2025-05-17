@@ -21,12 +21,20 @@ class Application:
         settings = self._app_config.get('settings', {})
         flash_duty_cycle = settings.get('image_flash_duty_cycle', 0.75)
         flash_duration = settings.get('image_flash_duration', 1.0)
+        scroll_text_speed = settings.get('scroll_text_speed', 3)
+        scroll_text_font_size = settings.get('scroll_text_font_size', 60)
+        scroll_text_font_color = settings.get('scroll_text_font_color', "white")
+        scroll_text_bg_color = settings.get('scroll_text_bg_color')
 
         media_config = self._app_config.get('media', {})
         self._action_handler = ActionHandler(
             media_config=media_config,
             flash_duty_cycle=flash_duty_cycle,
-            flash_duration=flash_duration
+            flash_duration=flash_duration,
+            scroll_text_speed=scroll_text_speed,
+            scroll_text_font_size=scroll_text_font_size,
+            scroll_text_font_color=scroll_text_font_color,
+            scroll_text_bg_color=scroll_text_bg_color
         )
 
     def run(self) -> None:

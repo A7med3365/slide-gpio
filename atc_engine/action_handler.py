@@ -5,13 +5,24 @@ from .image_display import ImageDisplay
 class ActionHandler:
     """Handles the execution of actions when buttons are pressed."""
     
-    def __init__(self, media_config: Dict[str, Dict[str, Any]], flash_duty_cycle: float, flash_duration: float):
+    def __init__(self,
+                 media_config: Dict[str, Dict[str, Any]],
+                 flash_duty_cycle: float,
+                 flash_duration: float,
+                 scroll_text_speed: int,
+                 scroll_text_font_size: int,
+                 scroll_text_font_color: str,
+                 scroll_text_bg_color: Optional[str]):
         self._lock = threading.RLock()
         self._current_action_details: Optional[Dict[str, Any]] = None
         self._image_display_service: Optional[ImageDisplay] = None
         self._media_config = media_config
         self.flash_duty_cycle = flash_duty_cycle
         self.flash_duration = flash_duration
+        self._default_scroll_speed = scroll_text_speed
+        self._default_scroll_font_size = scroll_text_font_size
+        self._default_scroll_font_color = scroll_text_font_color
+        self._default_scroll_bg_color = scroll_text_bg_color
     
     @property
     def current_action_name(self) -> Optional[str]:
@@ -99,13 +110,20 @@ class ActionHandler:
             elif mode == "scroll_text":
                 if self._image_display_service:
                     if path: # Path to the text file
-                        print(f"[ActionHandler] Queuing 'start_scroll_text' for ImageDisplay: File='{path}'")
-                        # For now, use default speed and colors. These could be made configurable later.
-                        self._image_display_service.start_scroll_text(file_path=path)
+                        print(f"[ActionHandler] Queuing 'start_scroll_text' for ImageDisplay: File='{path}', "
+                              f"Speed={self._default_scroll_speed}, FontSize={self._default_scroll_font_size}, "
+                              f"Color='{self._default_scroll_font_color}', BG='{self._default_scroll_bg_color}'")
+                        self._image_display_service.start_scroll_text(
+                            file_path=path,
+                            speed=self._default_scroll_speed,
+                            font_size=self._default_scroll_font_size,
+                            font_color_str=self._default_scroll_font_color,
+                            bg_color_str=self._default_scroll_bg_color
+                        )
                     else:
                         print(f"[ActionHandler] Error: No path provided for scroll_text mode. Clearing display.")
                         self._image_display_service.clear_image() # Or display an error message
-                        self._current_action_details = None # Action failed
+                        if self._current_action_details and self._current_action_details['name'] == name : self._current_action_details = None # Action failed
                 else:
                     print(f"[ActionHandler] Error: ImageDisplay service not available for mode {mode}.")
                     self._current_action_details = None # Action failed

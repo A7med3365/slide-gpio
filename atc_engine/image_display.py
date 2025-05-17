@@ -17,16 +17,18 @@ class ImageDisplay:
         self._current_scroll_surface: Optional[pygame.Surface] = None
         self._current_scroll_x_pos: int = 0
         self._current_scroll_y_pos: int = 0
-        self._scroll_speed: int = 3 # Default scroll speed (pixels per frame)
-        self._scroll_font_color: Tuple[int, int, int] = (255, 255, 255) # Default white
-        self._scroll_bg_color: Optional[Tuple[int, int, int]] = None # Default transparent BG for text render
+        # self._scroll_speed, self._scroll_font_color, self._scroll_bg_color are now set in 'start_scroll_text' command processing
+        self._scroll_speed: int = 3 # Default, will be overridden
+        self._scroll_font_color: pygame.Color = pygame.Color("white") # Default, will be overridden
+        self._scroll_bg_color: Optional[pygame.Color] = None # Default, will be overridden
         self._is_scrolling: bool = False
+        self._current_scroll_font: Optional[pygame.font.Font] = None # Font for scrolling text
 
         pygame.init()
         # It's good practice to check if font was initialized, though pygame.init() usually handles it.
         if not pygame.font.get_init():
             pygame.font.init()
-        self._font = pygame.font.Font(None, 74) # Default font and size
+        self._font = pygame.font.Font(None, 74) # Default font for static text (display_text)
         self.screen = pygame.display.set_mode((800, 600)) # Or any other preferred size
         pygame.display.set_caption("ATC Engine Display")
         self.screen_size = self.screen.get_size()
@@ -102,36 +104,62 @@ class ImageDisplay:
         """Queues a command to display text on the screen."""
         self._command_queue.put({'type': 'display_text', 'text': text, 'color': color, 'bg_color': bg_color})
 
-    def start_scroll_text(self, file_path: str, speed: int = 3, font_color: Tuple[int,int,int] = (255,255,255), bg_color: Optional[Tuple[int,int,int]] = None):
-        """Queues a command to start scrolling text from a file."""
-        self._command_queue.put({'type': 'start_scroll_text', 'path': file_path, 'speed': speed, 'font_color': font_color, 'bg_color': bg_color})
+    def start_scroll_text(self, file_path: str, speed: int = 3, font_size: int = 60, font_color_str: str = "white", bg_color_str: Optional[str] = None):
+        """Queues a command to start scrolling text from a file with specified parameters."""
+        self._command_queue.put({
+            'type': 'start_scroll_text',
+            'path': file_path,
+            'speed': speed,
+            'font_size': font_size,
+            'font_color': font_color_str,
+            'bg_color': bg_color_str
+        })
 
     def _prepare_next_scroll_line(self) -> None:
-        if self._scrolling_text_lines and self._current_scroll_line_index < len(self._scrolling_text_lines):
-            line_text = self._scrolling_text_lines[self._current_scroll_line_index].strip()
-            if not line_text: # If line is empty or whitespace after strip, render a single space
-                line_text = " "
-            
-            try:
-                # Render text (True for antialiasing)
-                self._current_scroll_surface = self._font.render(
-                    line_text, True, self._scroll_font_color, self._scroll_bg_color
-                )
-                text_rect = self._current_scroll_surface.get_rect()
-                self._current_scroll_x_pos = self.screen_size[0] # Start off-screen right
-                self._current_scroll_y_pos = (self.screen_size[1] - text_rect.height) // 2 # Center vertically
-                print(f"[ImageDisplay] Prepared scroll line {self._current_scroll_line_index + 1}/{len(self._scrolling_text_lines)}: '{line_text}'")
-            except Exception as e:
-                print(f"[ImageDisplay] Error rendering scroll line '{line_text}': {e}")
-                self._current_scroll_surface = None
-                # Potentially skip to next line or stop scrolling
-                self._current_scroll_line_index += 1
-                self._prepare_next_scroll_line() # Try next line
-        else:
-            print("[ImageDisplay] All scroll lines finished or no lines to scroll.")
+        if not self._scrolling_text_lines:
+            print("[ImageDisplay] No scroll lines available.")
             self._is_scrolling = False
             self._current_scroll_surface = None
-            self._scrolling_text_lines = None
+            return
+
+        if self._current_scroll_line_index >= len(self._scrolling_text_lines):
+            self._current_scroll_line_index = 0 # Wrap around for endless scrolling
+            print("[ImageDisplay] Wrapping scroll text to beginning.")
+
+        if not self._current_scroll_font:
+            print("[ImageDisplay] Error: Scroll font not initialized.")
+            # Fallback to default font if scroll font isn't set; ideally, this shouldn't happen if start_scroll_text was called.
+            self._current_scroll_font = pygame.font.Font(None, 30)
+
+
+        line_text = self._scrolling_text_lines[self._current_scroll_line_index].strip()
+        if not line_text: # If line is empty or whitespace after strip, render a single space
+            line_text = " "
+        
+        try:
+            # Render text (True for antialiasing)
+            self._current_scroll_surface = self._current_scroll_font.render(
+                line_text, True, self._scroll_font_color, self._scroll_bg_color
+            )
+            text_rect = self._current_scroll_surface.get_rect()
+            self._current_scroll_x_pos = self.screen_size[0] # Start off-screen right
+            self._current_scroll_y_pos = (self.screen_size[1] - text_rect.height) // 2 # Center vertically
+            print(f"[ImageDisplay] Prepared scroll line {self._current_scroll_line_index + 1}/{len(self._scrolling_text_lines)}: '{line_text}'")
+        except Exception as e:
+            print(f"[ImageDisplay] Error rendering scroll line '{line_text}' with current font: {e}")
+            self._current_scroll_surface = None
+            # Potentially skip to next line or stop scrolling if error persists
+            self._current_scroll_line_index += 1 # Move to next line to avoid getting stuck
+            if self._current_scroll_line_index < len(self._scrolling_text_lines):
+                self._prepare_next_scroll_line() # Try next line
+            else: # Reached end after an error, wrap or stop
+                self._current_scroll_line_index = 0
+                if len(self._scrolling_text_lines) > 0 : # only prepare if there are lines
+                    self._prepare_next_scroll_line()
+                else:
+                    self._is_scrolling = False # No lines to scroll
+        # Removed the 'else' block that previously set _is_scrolling = False,
+        # as wrapping handles continuation. _is_scrolling is set False if _scrolling_text_lines is None/empty.
 
     def stop_display(self):
         self._command_queue.put({'type': 'stop'})
@@ -219,14 +247,38 @@ class ImageDisplay:
                     elif command['type'] == 'start_scroll_text':
                         file_path = command['path']
                         self._scroll_speed = command.get('speed', 3)
-                        self._scroll_font_color = command.get('font_color', (255, 255, 255))
-                        self._scroll_bg_color = command.get('bg_color') # Can be None
+                        font_size_to_use = command.get('font_size', 60)
+                        font_color_str = command.get('font_color', 'white')
+                        bg_color_str = command.get('bg_color')
 
-                        print(f"[ImageDisplay] CMD: Start scroll text from '{file_path}'")
+                        try:
+                            self._current_scroll_font = pygame.font.Font(None, font_size_to_use)
+                        except Exception as e:
+                            print(f"[ImageDisplay] Error creating font size {font_size_to_use}: {e}. Using fallback.")
+                            self._current_scroll_font = pygame.font.Font(None, 30) # Fallback font
+
+                        try:
+                            self._scroll_font_color = pygame.Color(font_color_str)
+                        except ValueError:
+                            print(f"[ImageDisplay] Invalid font color string '{font_color_str}'. Using white.")
+                            self._scroll_font_color = pygame.Color('white')
+
+                        if bg_color_str:
+                            try:
+                                self._scroll_bg_color = pygame.Color(bg_color_str)
+                            except ValueError:
+                                print(f"[ImageDisplay] Invalid background color string '{bg_color_str}'. Using None.")
+                                self._scroll_bg_color = None
+                        else:
+                            self._scroll_bg_color = None
+
+                        print(f"[ImageDisplay] CMD: Start scroll text from '{file_path}', Speed: {self._scroll_speed}, Font Size: {font_size_to_use}, Color: {self._scroll_font_color}, BG: {self._scroll_bg_color}")
+                        
                         try:
                             with open(file_path, 'r', encoding='utf-8') as f:
                                 self._scrolling_text_lines = f.readlines()
                             if not self._scrolling_text_lines:
+                                print(f"[ImageDisplay] Scroll text file '{file_path}' is empty. Displaying placeholder.")
                                 self._scrolling_text_lines = ["(Empty File)"]
                             
                             self._current_scroll_line_index = 0
@@ -242,10 +294,12 @@ class ImageDisplay:
                             print(f"[ImageDisplay] Error: Scroll text file not found: {file_path}")
                             self._is_scrolling = False
                             self._scrolling_text_lines = None
+                            self._current_scroll_font = None # Clear font if file not found
                         except Exception as e:
                             print(f"[ImageDisplay] Error reading or preparing scroll text file '{file_path}': {e}")
                             self._is_scrolling = False
                             self._scrolling_text_lines = None
+                            self._current_scroll_font = None # Clear font on other errors
                     elif command['type'] == 'stop':
                         self._is_running_loop = False
                         print(f"[ImageDisplay] CMD: Stop display loop")
