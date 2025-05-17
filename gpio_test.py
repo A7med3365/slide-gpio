@@ -17,7 +17,7 @@ gpio.init()
 #     time.sleep(1)
 
 # Set PE0, PE1, PE2, PE3 as input
-input_pins = [32, 33, 34, 35]
+input_pins = [32, 33, 34, 35, 36, port.PC4, port.PC7]
 for pin in input_pins:
     gpio.setcfg(pin, gpio.INPUT)
     gpio.pullup(pin, gpio.PULLUP)
