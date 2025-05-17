@@ -33,6 +33,13 @@ class GPIOMonitor(threading.Thread):
         # Load configuration
         self._config: Dict[str, Any] = {} # Will be populated by _load_config
         self._load_config(config_path)
+
+        # Load default media name from config
+        self._default_media_name: Optional[str] = self._config.get('settings', {}).get('default_media_name')
+        if self._default_media_name:
+            print(f"[GPIO] Default media name loaded: {self._default_media_name}")
+        else:
+            print("[GPIO] No default_media_name found in settings.")
         
         # Initialize button states and pin-to-name mapping
         self._button_states: Dict[int, ButtonState] = {}
@@ -228,29 +235,62 @@ class GPIOMonitor(threading.Thread):
             for pressed_pin in list(newly_pressed_pins): # Iterate over a copy
                 state = self._button_states.get(pressed_pin)
                 button_name = self._pin_to_button_name.get(pressed_pin)
-
+                
                 # Ensure it's a single button press, not part of a forming or just-fired combo,
                 # and only one button is currently physically pressed.
                 if state and not state.was_in_combo and button_name and len(currently_pressed_pins) == 1 and pressed_pin in currently_pressed_pins:
                     # Find the action for this single button
+                    action_item_name_to_trigger: Optional[str] = None
+                    action_item_details_to_trigger: Optional[Dict[str, Any]] = None
+
                     for item in self._combined_actions:
                         item_button_config = item['details'].get('button')
+                        # Ensure it's a single button action definition
                         if isinstance(item_button_config, str) and item_button_config == button_name:
-                            # Ensure this is not a multi-button item misconfigured as string
-                            is_single_button_action = True
+                            # Check if it's not actually a multi-button item misconfigured as string
+                            # (though config validation should ideally catch this)
                             if isinstance(item['details'].get('button'), list) and len(item['details']['button']) > 1:
-                                is_single_button_action = False
+                                continue # Skip this item, it's for a combo
 
-                            if is_single_button_action:
-                                print(f"[GPIO] Executing single button action: Name='{item['name']}', Mode='{item['details']['mode']}', Path='{item['details'].get('path')}' for button '{button_name}'")
-                                self._action_handler.execute_action(
-                                    name=item['name'],
-                                    mode=item['details']['mode'],
-                                    path=item['details'].get('path')
-                                )
-                                # Mark as handled for this press cycle (optional, debounce should mostly cover it)
-                                # state.was_in_combo = True # Or a new flag like state.single_action_fired_this_press
-                                break # Found and executed action for this single button
+                            action_item_name_to_trigger = item['name']
+                            action_item_details_to_trigger = item['details']
+                            break # Found the corresponding action for the single button press
+                    
+                    if action_item_name_to_trigger and action_item_details_to_trigger:
+                        current_active_action_name = self._action_handler.current_action_name
+                        
+                        # New Logic: Check if this button press corresponds to the currently active media item
+                        if action_item_name_to_trigger == current_active_action_name:
+                            print(f"[GPIO] Single press on active action button '{button_name}' ({action_item_name_to_trigger}).")
+                            if self._default_media_name:
+                                default_media_details = self._config.get('media', {}).get(self._default_media_name)
+                                if default_media_details:
+                                    print(f"[GPIO] Returning to home state: {self._default_media_name}")
+                                    self._action_handler.execute_action(
+                                        name=self._default_media_name,
+                                        mode=default_media_details['mode'],
+                                        path=default_media_details.get('path')
+                                    )
+                                else:
+                                    print(f"[GPIO] Default media '{self._default_media_name}' not found in config. Stopping current action.")
+                                    self._action_handler.stop_current()
+                            else:
+                                print("[GPIO] No default_media_name defined. Stopping current action.")
+                                self._action_handler.stop_current()
+                            # Mark as handled for this press cycle
+                            # state.was_in_combo = True # Or a new flag
+                            break # Processed this pin, move to next _handle_button_states cycle
+                        else:
+                            # Original behavior: trigger the action associated with this single button
+                            print(f"[GPIO] Executing single button action: Name='{action_item_name_to_trigger}', Mode='{action_item_details_to_trigger['mode']}', Path='{action_item_details_to_trigger.get('path')}' for button '{button_name}'")
+                            self._action_handler.execute_action(
+                                name=action_item_name_to_trigger,
+                                mode=action_item_details_to_trigger['mode'],
+                                path=action_item_details_to_trigger.get('path')
+                            )
+                            # Mark as handled for this press cycle
+                            # state.was_in_combo = True # Or a new flag
+                            break # Found and executed action for this single button
 
     def stop(self) -> None:
         """Signal the thread to stop and cleanup resources."""

@@ -8,6 +8,12 @@ class ActionHandler:
         self._lock = threading.Lock()
         self._current_action_details: Optional[Dict[str, Any]] = None
     
+    @property
+    def current_action_name(self) -> Optional[str]:
+        if self._current_action_details:
+            return self._current_action_details['name']
+        return None
+    
     def execute_action(self, name: str, mode: str, path: Optional[str] = None) -> None:
         """Print the action that would be executed."""
         with self._lock:

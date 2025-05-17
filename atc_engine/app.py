@@ -1,4 +1,5 @@
 import threading
+import json
 from .action_handler import ActionHandler
 from .gpio_monitor import GPIOMonitor
 
@@ -10,10 +11,35 @@ class Application:
         self._action_handler = action_handler
         self._gpio_monitor = None
         self._shutdown_event = threading.Event()
+        self._app_config = {}
+        try:
+            with open(config_path, 'r') as f:
+                self._app_config = json.load(f)
+        except Exception as e:
+            print(f"[App] Error loading configuration for default media: {e}")
+            # self._app_config remains {} or handle error more gracefully
 
     def run(self) -> None:
         """Start the application and its components."""
         print("[App] Starting application")
+
+        # Trigger default media action
+        default_media_name = self._app_config.get('settings', {}).get('default_media_name')
+        if default_media_name:
+            media_items = self._app_config.get('media', {})
+            media_item_details = media_items.get(default_media_name)
+            if media_item_details:
+                mode = media_item_details.get('mode')
+                path = media_item_details.get('path')
+                if mode: # Ensure mode is present
+                    print(f"[App] Starting with default media: {default_media_name}")
+                    self._action_handler.execute_action(name=default_media_name, mode=mode, path=path)
+                else:
+                    print(f"[App] Default media '{default_media_name}' found but 'mode' is missing.")
+            else:
+                print(f"[App] Default media '{default_media_name}' not found in configuration.")
+        else:
+            print("[App] No default media name specified in configuration.")
 
         self._gpio_monitor = GPIOMonitor(self._config_path, self._action_handler)
         self._gpio_monitor.start()
