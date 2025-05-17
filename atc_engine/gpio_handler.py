@@ -22,7 +22,7 @@ except ImportError:
         def input(self, pin): return 1
     gpio = MockGPIO()
 
-class GPIOHandler(threading.Thread):
+class GPIOMonitor(threading.Thread):
     """Handles GPIO pin monitoring and initialization."""
 
     def __init__(self, config: Dict[str, Any], button_manager: Any, action_handler: Any):

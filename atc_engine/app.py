@@ -9,7 +9,7 @@ from typing import Optional
 
 from .action_handler import ActionHandler
 from .button_manager import ButtonManager
-from .gpio_handler import GPIOHandler
+from .gpio_handler import GPIOMonitor
 from .config_loader import load_config
 
 class Application:
@@ -20,7 +20,7 @@ class Application:
         self._config_path = config_path
         self._config = None
         self._button_manager: Optional[ButtonManager] = None
-        self._gpio_handler: Optional[GPIOHandler] = None
+        self._gpio_handler: Optional[GPIOMonitor] = None
         self._action_handler: Optional[ActionHandler] = None
         self._shutdown_event = threading.Event()
         
@@ -37,7 +37,7 @@ class Application:
             self._action_handler = ActionHandler(self._config)
             
             print("[App] Initializing GPIO handler")
-            self._gpio_handler = GPIOHandler(
+            self._gpio_handler = GPIOMonitor(
                 self._config,
                 self._button_manager,
                 self._action_handler

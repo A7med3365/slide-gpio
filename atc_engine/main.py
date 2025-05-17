@@ -5,7 +5,7 @@ Initializes and runs the application.
 """
 
 import os
-from .app import Application
+from atc_engine.app import Application
 
 def main():
     """Main entry point for the ATC Engine application."""
