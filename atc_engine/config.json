@@ -1,0 +1,38 @@
+{
+    "gpio": {
+        "buttons": {
+            "32": {
+                "name": "button1",
+                "path": "demo1/1_Flag and Logo_J.gif"
+            },
+            "33": {
+                "name": "button2", 
+                "path": "demo1/2_Followme.gif"
+            },
+            "34": {
+                "name": "button3",
+                "path": "demo1/3_STOP.gif"
+            },
+            "35": {
+                "name": "button4",
+                "path": "demo1/4_Keep Distance.gif"
+            }
+        },
+        "combinations": [
+            {
+                "buttons": ["32", "33"],
+                "name": "combo1",
+                "path": "demo1/5_Keep Right.gif"
+            },
+            {
+                "buttons": ["34", "35"],
+                "name": "combo2", 
+                "path": "demo1/6_Keep Left.gif"
+            }
+        ],
+        "settings": {
+            "debounce_time": 0.5,
+            "poll_interval": 0.05
+        }
+    }
+}
