@@ -12,10 +12,17 @@ class ImageDisplay:
         self._is_running_loop = False
 
         pygame.init()
+        # It's good practice to check if font was initialized, though pygame.init() usually handles it.
+        if not pygame.font.get_init():
+            pygame.font.init()
+        self._font = pygame.font.Font(None, 74) # Default font and size
         self.screen = pygame.display.set_mode((800, 600)) # Or any other preferred size
         pygame.display.set_caption("ATC Engine Display")
         self.screen_size = self.screen.get_size()
         pygame.mouse.set_visible(False)
+
+        self._current_text_surface: Optional[pygame.Surface] = None
+        self._current_text_pos: Optional[Tuple[int, int]] = None
 
         for media_name, media_details in media_config.items():
             if media_details.get('mode') in ("image_still", "image_flash") and media_details.get('path'):
@@ -80,6 +87,10 @@ class ImageDisplay:
     def clear_image(self):
         self._command_queue.put({'type': 'clear_image'})
 
+    def display_text(self, text: str, color: Tuple[int, int, int] = (255, 255, 255), bg_color: Optional[Tuple[int, int, int]] = None):
+        """Queues a command to display text on the screen."""
+        self._command_queue.put({'type': 'display_text', 'text': text, 'color': color, 'bg_color': bg_color})
+
     def stop_display(self):
         self._command_queue.put({'type': 'stop'})
 
@@ -113,18 +124,44 @@ class ImageDisplay:
                             self._current_image_path = path
                             self._display_mode = mode
                             self._flash_start_time = time.time() # Reset flash timer
+                            self._current_text_surface = None # Clear any active text
+                            self._current_text_pos = None
                             print(f"[ImageDisplay] CMD: Set image to {path}, Mode: {mode}")
                         else:
                             print(f"[ImageDisplay] CMD Error: Image not pre-loaded: {path}")
                             self._current_image_surface = None
                             self._current_image_pos = None
                             self._current_image_path = None
+                            self._current_text_surface = None # Also clear text if image loading failed
+                            self._current_text_pos = None
                     elif command['type'] == 'clear_image':
-                        self._current_image_surface = None
-                        self._current_image_pos = None
-                        self._current_image_path = None
-                        # self._display_mode = "still" # Or keep current mode?
                         print(f"[ImageDisplay] CMD: Clear image")
+                        self._current_image_surface = None
+                        self._current_image_path = None
+                        self._current_text_surface = None # Clear any active text
+                        self._current_text_pos = None
+                    elif command['type'] == 'display_text':
+                        text_to_display = command['text']
+                        text_color = command.get('color', (255, 255, 255))
+                        bg_color = command.get('bg_color') # Can be None for transparent background
+
+                        print(f"[ImageDisplay] CMD: Display text: '{text_to_display}'")
+                        try:
+                            # Clear previous image/text
+                            self._current_image_surface = None
+                            self._current_image_path = None
+                            
+                            # Render text
+                            # The second argument to render is antialiasing (True/False)
+                            text_surf = self._font.render(text_to_display, True, text_color, bg_color)
+                            text_rect = text_surf.get_rect(center=(self.screen_size[0] // 2, self.screen_size[1] // 2))
+                            
+                            self._current_text_surface = text_surf
+                            self._current_text_pos = text_rect.topleft
+                        except Exception as e:
+                            print(f"[ImageDisplay] Error rendering text '{text_to_display}': {e}")
+                            self._current_text_surface = None
+                            self._current_text_pos = None
                     elif command['type'] == 'stop':
                         self._is_running_loop = False
                         print(f"[ImageDisplay] CMD: Stop display loop")
@@ -138,9 +175,11 @@ class ImageDisplay:
                 break
 
             # Render Logic
-            self.screen.fill((0, 0, 0))  # Black background
+            self.screen.fill((0, 0, 0)) # Clear screen with black
 
-            if self._current_image_surface and self._current_image_pos:
+            if self._current_text_surface and self._current_text_pos:
+                self.screen.blit(self._current_text_surface, self._current_text_pos)
+            elif self._current_image_surface and self._current_image_pos:
                 if self._display_mode == "flash" and self._flash_duration > 0 and self._on_time > 0: # Ensure on_time is positive
                     cycle_time = (time.time() - self._flash_start_time) % self._flash_duration
                     is_on_phase = cycle_time < self._on_time

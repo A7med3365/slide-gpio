@@ -45,61 +45,103 @@ class ActionHandler:
     def execute_action(self, name: str, mode: str, path: Optional[str] = None) -> None:
         """Executes the specified action."""
         with self._lock:
-            # Stop previous action first
-            if self._current_action_details:
-                # We call the full stop_current logic to ensure proper cleanup
-                # This will re-acquire the lock, which is fine for reentrant locks
-                # or if we release and re-acquire.
-                # For simplicity, we'll rely on the fact that stop_current also locks.
-                # A more robust way might be to have an internal _stop_current_action
-                # that doesn't lock, but this should work for now.
-                # print(f"[ActionHandler] Stopping previous action: {self._current_action_details['name']} before starting new one.")
-                self.stop_current() # This will handle clearing _current_action_details
+            # Stop current action if one is active and different from the new one
+            if self._current_action_details and self._current_action_details.get('name') != name:
+                print(f"[ActionHandler] Stopping: {self._current_action_details['name']} (Mode: {self._current_action_details['mode']}) due to new action '{name}'.")
+                temp_details_to_stop = self._current_action_details.copy()
+                self._current_action_details = None # Clear before calling stop_current
+                self.stop_current(specific_details=temp_details_to_stop)
+            elif self._current_action_details and \
+                 self._current_action_details.get('name') == name and \
+                 self._current_action_details.get('mode') == mode and \
+                 self._current_action_details.get('path') == path:
+                print(f"[ActionHandler] Action {name} (Mode: {mode}, Path: {str(path)}) is already active. Re-applying.")
+                # Action is identical, effects will be re-applied by subsequent logic.
+            
+            # Set new action details (or update if re-triggering)
+            self._current_action_details = {'name': name, 'mode': mode, 'path': path}
+            path_str = str(path) if path else "N/A"
+            print(f"[ActionHandler] Starting/Updating action: {name} (Mode: {mode}, Path: {path_str})")
 
-            # Now, handle the new action
             if mode == "image_still" or mode == "image_flash":
-                if self._image_display_service is None:
-                    # This should ideally not happen if start_services was called by Application
-                    print("[ActionHandler] Error: ImageDisplay service not initialized. Cannot execute image action.")
-                    self._current_action_details = None
-                    return # Cannot proceed
+                if self._image_display_service:
+                    if path:
+                        print(f"[ActionHandler] Queuing 'set_image' for ImageDisplay: Path='{path}', Mode='{mode}'")
+                        self._image_display_service.set_image(image_path=path, mode=mode)
+                    else:
+                        print(f"[ActionHandler] Error: No path provided for image mode '{mode}'. Clearing display.")
+                        self._image_display_service.clear_image()
+                        self._current_action_details = None # Action failed
+                else:
+                    print(f"[ActionHandler] Error: ImageDisplay service not available for image mode '{mode}'.")
+                    self._current_action_details = None # Action failed
+            
+            elif mode == "hdmi_control":
+                if self._image_display_service:
+                    display_text = f"HDMI Control: {name}"
+                    print(f"[ActionHandler] Queuing 'display_text' for ImageDisplay: Text='{display_text}'")
+                    self._image_display_service.display_text(text=display_text)
+                else:
+                    print(f"[ActionHandler] Error: ImageDisplay service not available for mode '{mode}'.")
+                    self._current_action_details = None # Action failed
+                # Actual HDMI control logic would go here in a real implementation
 
-                # Ensure _image_display_service exists (it should have been created by start_services)
-                if path:
-                    print(f"[ActionHandler] Queuing 'set_image' for ImageDisplay: Path='{path}', Mode='{mode}'")
-                    self._image_display_service.set_image(image_path=path, mode=mode)
-                    self._current_action_details = {'name': name, 'mode': mode, 'path': path}
-                    # print(f"[ActionHandler] Queued image: {name} (Mode: {mode}, Path: {path})") # Original log, commented out or removed
-                else: # No path, means clear the display for this action
-                    print(f"[ActionHandler] Clearing image display for action: {name} (Mode: {mode})")
-                    self._image_display_service.clear_image()
-                    # Setting details even for a clear, as it's an explicit action
-                    self._current_action_details = {'name': name, 'mode': mode, 'path': None}
+            elif mode == "load_config":
+                if self._image_display_service:
+                    display_text = f"Load Config: {name}"
+                    print(f"[ActionHandler] Queuing 'display_text' for ImageDisplay: Text='{display_text}'")
+                    self._image_display_service.display_text(text=display_text)
+                else:
+                    print(f"[ActionHandler] Error: ImageDisplay service not available for mode '{mode}'.")
+                    self._current_action_details = None # Action failed
+                # Actual config loading logic would go here
 
-            else: # Other action modes
-                # Placeholder for other action types
-                path_str = path if path else "N/A"
-                print(f"[ActionHandler] Starting: {name} (Mode: {mode}, Path: {path_str})")
-                # For non-image actions, we still need to set current_action_details
-                self._current_action_details = {'name': name, 'mode': mode, 'path': path}
+            # elif mode == "scroll_text":
+            #     # Placeholder for scroll_text logic
+            #     print(f"[ActionHandler] Placeholder for scroll_text: {name}")
+            #     if self._image_display_service:
+            #          self._image_display_service.display_text(text=f"Scroll: {name} - {path}")
 
+            else:
+                # This 'else' means the mode is not one of the explicitly handled ones above.
+                handled_modes = ["image_still", "image_flash", "hdmi_control", "load_config"]
+                if mode not in handled_modes:
+                    print(f"[ActionHandler] Warning: Unknown action mode '{mode}' for action '{name}'.")
+                    # Optionally clear current_action_details if the mode is truly unhandled
+                    # For now, we keep _current_action_details set, as the action was "started".
 
-    def stop_current(self) -> None:
-        """Stops the currently running action."""
+    def stop_current(self, specific_details: Optional[Dict[str, Any]] = None) -> None:
+        """
+        Stops the currently running action, or a specific action if details are provided.
+        Ensures that display elements are cleared for relevant action modes.
+        """
         with self._lock:
-            if self._current_action_details:
-                action_name = self._current_action_details['name']
-                action_mode = self._current_action_details['mode']
-                print(f"[ActionHandler] Stopping: {action_name} (Mode: {action_mode})")
+            details_to_stop = None
+            if specific_details:
+                details_to_stop = specific_details
+            elif self._current_action_details: # Fallback to current if no specific details
+                details_to_stop = self._current_action_details
 
-                if action_mode == "image_still" or action_mode == "image_flash":
+            if details_to_stop:
+                action_name = details_to_stop.get('name', 'Unknown Action')
+                action_mode = details_to_stop.get('mode', 'Unknown Mode')
+                
+                print(f"[ActionHandler] Processing stop for action: {action_name} (Mode: {action_mode})")
+
+                # Clear display for modes that use it
+                if action_mode in ["image_still", "image_flash", "hdmi_control", "load_config"]:
                     if self._image_display_service:
-                        print(f"[ActionHandler] Queuing 'clear_image' for ImageDisplay for stopped action: {self._current_action_details['name']}")
+                        print(f"[ActionHandler] Queuing 'clear_image' for ImageDisplay for stopped action: {action_name}")
                         self._image_display_service.clear_image()
                 
-                # Placeholder for stopping other types of actions
-                # e.g., if action_mode == "scroll_text": self._text_scroller.stop()
+                # Placeholder for stopping other types of actions (e.g., specific hardware control)
 
-                self._current_action_details = None
+                # If stop_current was called directly (not via specific_details from execute_action),
+                # and the action being stopped was indeed the _current_action_details, clear it.
+                # If specific_details were provided, execute_action has already managed _current_action_details.
+                if not specific_details and self._current_action_details and \
+                   self._current_action_details.get('name') == action_name and \
+                   self._current_action_details.get('mode') == action_mode:
+                    self._current_action_details = None
             # else:
-            #     print("[ActionHandler] No current action to stop.")
+            #     print("[ActionHandler] stop_current called, but no action was active or specified to stop.")
