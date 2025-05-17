@@ -96,15 +96,23 @@ class ActionHandler:
                     self._current_action_details = None # Action failed
                 # Actual config loading logic would go here
 
-            # elif mode == "scroll_text":
-            #     # Placeholder for scroll_text logic
-            #     print(f"[ActionHandler] Placeholder for scroll_text: {name}")
-            #     if self._image_display_service:
-            #          self._image_display_service.display_text(text=f"Scroll: {name} - {path}")
+            elif mode == "scroll_text":
+                if self._image_display_service:
+                    if path: # Path to the text file
+                        print(f"[ActionHandler] Queuing 'start_scroll_text' for ImageDisplay: File='{path}'")
+                        # For now, use default speed and colors. These could be made configurable later.
+                        self._image_display_service.start_scroll_text(file_path=path)
+                    else:
+                        print(f"[ActionHandler] Error: No path provided for scroll_text mode. Clearing display.")
+                        self._image_display_service.clear_image() # Or display an error message
+                        self._current_action_details = None # Action failed
+                else:
+                    print(f"[ActionHandler] Error: ImageDisplay service not available for mode {mode}.")
+                    self._current_action_details = None # Action failed
 
             else:
                 # This 'else' means the mode is not one of the explicitly handled ones above.
-                handled_modes = ["image_still", "image_flash", "hdmi_control", "load_config"]
+                handled_modes = ["image_still", "image_flash", "hdmi_control", "load_config", "scroll_text"]
                 if mode not in handled_modes:
                     print(f"[ActionHandler] Warning: Unknown action mode '{mode}' for action '{name}'.")
                     # Optionally clear current_action_details if the mode is truly unhandled
@@ -129,7 +137,7 @@ class ActionHandler:
                 print(f"[ActionHandler] Processing stop for action: {action_name} (Mode: {action_mode})")
 
                 # Clear display for modes that use it
-                if action_mode in ["image_still", "image_flash", "hdmi_control", "load_config"]:
+                if action_mode in ["image_still", "image_flash", "hdmi_control", "load_config", "scroll_text"]: # Add "scroll_text"
                     if self._image_display_service:
                         print(f"[ActionHandler] Queuing 'clear_image' for ImageDisplay for stopped action: {action_name}")
                         self._image_display_service.clear_image()

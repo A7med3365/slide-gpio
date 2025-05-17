@@ -11,6 +11,17 @@ class ImageDisplay:
         self._command_queue = queue.Queue()
         self._is_running_loop = False
 
+        # Scrolling state variables
+        self._scrolling_text_lines: Optional[List[str]] = None
+        self._current_scroll_line_index: int = 0
+        self._current_scroll_surface: Optional[pygame.Surface] = None
+        self._current_scroll_x_pos: int = 0
+        self._current_scroll_y_pos: int = 0
+        self._scroll_speed: int = 3 # Default scroll speed (pixels per frame)
+        self._scroll_font_color: Tuple[int, int, int] = (255, 255, 255) # Default white
+        self._scroll_bg_color: Optional[Tuple[int, int, int]] = None # Default transparent BG for text render
+        self._is_scrolling: bool = False
+
         pygame.init()
         # It's good practice to check if font was initialized, though pygame.init() usually handles it.
         if not pygame.font.get_init():
@@ -91,6 +102,37 @@ class ImageDisplay:
         """Queues a command to display text on the screen."""
         self._command_queue.put({'type': 'display_text', 'text': text, 'color': color, 'bg_color': bg_color})
 
+    def start_scroll_text(self, file_path: str, speed: int = 3, font_color: Tuple[int,int,int] = (255,255,255), bg_color: Optional[Tuple[int,int,int]] = None):
+        """Queues a command to start scrolling text from a file."""
+        self._command_queue.put({'type': 'start_scroll_text', 'path': file_path, 'speed': speed, 'font_color': font_color, 'bg_color': bg_color})
+
+    def _prepare_next_scroll_line(self) -> None:
+        if self._scrolling_text_lines and self._current_scroll_line_index < len(self._scrolling_text_lines):
+            line_text = self._scrolling_text_lines[self._current_scroll_line_index].strip()
+            if not line_text: # If line is empty or whitespace after strip, render a single space
+                line_text = " "
+            
+            try:
+                # Render text (True for antialiasing)
+                self._current_scroll_surface = self._font.render(
+                    line_text, True, self._scroll_font_color, self._scroll_bg_color
+                )
+                text_rect = self._current_scroll_surface.get_rect()
+                self._current_scroll_x_pos = self.screen_size[0] # Start off-screen right
+                self._current_scroll_y_pos = (self.screen_size[1] - text_rect.height) // 2 # Center vertically
+                print(f"[ImageDisplay] Prepared scroll line {self._current_scroll_line_index + 1}/{len(self._scrolling_text_lines)}: '{line_text}'")
+            except Exception as e:
+                print(f"[ImageDisplay] Error rendering scroll line '{line_text}': {e}")
+                self._current_scroll_surface = None
+                # Potentially skip to next line or stop scrolling
+                self._current_scroll_line_index += 1
+                self._prepare_next_scroll_line() # Try next line
+        else:
+            print("[ImageDisplay] All scroll lines finished or no lines to scroll.")
+            self._is_scrolling = False
+            self._current_scroll_surface = None
+            self._scrolling_text_lines = None
+
     def stop_display(self):
         self._command_queue.put({'type': 'stop'})
 
@@ -126,6 +168,9 @@ class ImageDisplay:
                             self._flash_start_time = time.time() # Reset flash timer
                             self._current_text_surface = None # Clear any active text
                             self._current_text_pos = None
+                            self._is_scrolling = False # Stop scrolling
+                            self._scrolling_text_lines = None
+                            self._current_scroll_surface = None
                             print(f"[ImageDisplay] CMD: Set image to {path}, Mode: {mode}")
                         else:
                             print(f"[ImageDisplay] CMD Error: Image not pre-loaded: {path}")
@@ -134,12 +179,18 @@ class ImageDisplay:
                             self._current_image_path = None
                             self._current_text_surface = None # Also clear text if image loading failed
                             self._current_text_pos = None
+                            self._is_scrolling = False # Stop scrolling
+                            self._scrolling_text_lines = None
+                            self._current_scroll_surface = None
                     elif command['type'] == 'clear_image':
                         print(f"[ImageDisplay] CMD: Clear image")
                         self._current_image_surface = None
                         self._current_image_path = None
                         self._current_text_surface = None # Clear any active text
                         self._current_text_pos = None
+                        self._is_scrolling = False # Stop scrolling
+                        self._scrolling_text_lines = None
+                        self._current_scroll_surface = None
                     elif command['type'] == 'display_text':
                         text_to_display = command['text']
                         text_color = command.get('color', (255, 255, 255))
@@ -150,6 +201,9 @@ class ImageDisplay:
                             # Clear previous image/text
                             self._current_image_surface = None
                             self._current_image_path = None
+                            self._is_scrolling = False # Stop scrolling
+                            self._scrolling_text_lines = None
+                            self._current_scroll_surface = None
                             
                             # Render text
                             # The second argument to render is antialiasing (True/False)
@@ -162,6 +216,36 @@ class ImageDisplay:
                             print(f"[ImageDisplay] Error rendering text '{text_to_display}': {e}")
                             self._current_text_surface = None
                             self._current_text_pos = None
+                    elif command['type'] == 'start_scroll_text':
+                        file_path = command['path']
+                        self._scroll_speed = command.get('speed', 3)
+                        self._scroll_font_color = command.get('font_color', (255, 255, 255))
+                        self._scroll_bg_color = command.get('bg_color') # Can be None
+
+                        print(f"[ImageDisplay] CMD: Start scroll text from '{file_path}'")
+                        try:
+                            with open(file_path, 'r', encoding='utf-8') as f:
+                                self._scrolling_text_lines = f.readlines()
+                            if not self._scrolling_text_lines:
+                                self._scrolling_text_lines = ["(Empty File)"]
+                            
+                            self._current_scroll_line_index = 0
+                            self._is_scrolling = True
+                            
+                            # Clear other display modes
+                            self._current_image_surface = None
+                            self._current_image_path = None
+                            self._current_text_surface = None # Clear static text
+                            
+                            self._prepare_next_scroll_line()
+                        except FileNotFoundError:
+                            print(f"[ImageDisplay] Error: Scroll text file not found: {file_path}")
+                            self._is_scrolling = False
+                            self._scrolling_text_lines = None
+                        except Exception as e:
+                            print(f"[ImageDisplay] Error reading or preparing scroll text file '{file_path}': {e}")
+                            self._is_scrolling = False
+                            self._scrolling_text_lines = None
                     elif command['type'] == 'stop':
                         self._is_running_loop = False
                         print(f"[ImageDisplay] CMD: Stop display loop")
@@ -175,11 +259,20 @@ class ImageDisplay:
                 break
 
             # Render Logic
+            # --- Update Display ---
             self.screen.fill((0, 0, 0)) # Clear screen with black
 
-            if self._current_text_surface and self._current_text_pos:
+            if self._is_scrolling and self._current_scroll_surface:
+                self._current_scroll_x_pos -= self._scroll_speed
+                self.screen.blit(self._current_scroll_surface, (self._current_scroll_x_pos, self._current_scroll_y_pos))
+                
+                if self._current_scroll_x_pos + self._current_scroll_surface.get_width() < 0:
+                    self._current_scroll_line_index += 1
+                    self._prepare_next_scroll_line()
+                    
+            elif self._current_text_surface and self._current_text_pos: # Static text
                 self.screen.blit(self._current_text_surface, self._current_text_pos)
-            elif self._current_image_surface and self._current_image_pos:
+            elif self._current_image_surface and self._current_image_pos: # Image display
                 if self._display_mode == "flash" and self._flash_duration > 0 and self._on_time > 0: # Ensure on_time is positive
                     cycle_time = (time.time() - self._flash_start_time) % self._flash_duration
                     is_on_phase = cycle_time < self._on_time
