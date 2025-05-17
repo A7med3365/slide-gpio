@@ -22,17 +22,20 @@
             {
                 "buttons": ["32", "33"],
                 "name": "combo1",
-                "path": "demo1/5_Keep Right.gif"
+                "path": "demo1/5_Keep Right.gif",
+                "hold_time": 2.0
             },
             {
                 "buttons": ["34", "35"],
                 "name": "combo2", 
-                "path": "demo1/6_Keep Left.gif"
+                "path": "demo1/6_Keep Left.gif",
+                "hold_time": 1.5
             }
         ],
         "settings": {
             "debounce_time": 0.5,
-            "poll_interval": 0.05
+            "poll_interval": 0.05,
+            "default_combo_hold_time": 1.0
         }
     }
 }

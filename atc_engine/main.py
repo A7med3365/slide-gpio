@@ -53,6 +53,7 @@ class ButtonState:
         self.is_pressed: bool = False
         self.last_press_time: float = 0.0
         self.last_state: int = 1  # Default to HIGH (not pressed)
+        self.was_in_combo: bool = False  # Track if button was part of a combo
 
 class GPIOMonitor(threading.Thread):
     """Monitors GPIO buttons with support for combinations."""
@@ -73,9 +74,11 @@ class GPIOMonitor(threading.Thread):
             int(pin): ButtonState() for pin in self._config['gpio']['buttons'].keys()
         }
         
-        # Track active combinations
+        # Track combination states
         self._active_combination = None
-        self._combination_start_time = 0
+        self._combination_start_time = 0.0
+        self._held_buttons = set()
+        self._default_hold_time = self._config['gpio']['settings'].get('default_combo_hold_time', 1.0)
         
         print("[GPIO] Monitor initialized")
 
@@ -109,62 +112,99 @@ class GPIOMonitor(threading.Thread):
             print(f"[GPIO] Error initializing GPIO: {e}")
             return False
 
-    def _check_combinations(self, current_pressed: Set[int]) -> Optional[dict]:
-        """Check for active button combinations."""
+    def _check_combinations(self, current_pressed: Set[int], current_time: float) -> Optional[dict]:
+        """Check for active button combinations with hold time."""
         if not current_pressed:
+            self._held_buttons.clear()
+            self._combination_start_time = 0.0
             self._active_combination = None
             return None
 
         # Check each defined combination
         for combo in self._config['gpio']['combinations']:
             combo_pins = [int(pin) for pin in combo['buttons']]
-            # Check if exactly these buttons are pressed (no extra buttons)
-            if set(current_pressed) == set(combo_pins):
-                if self._active_combination != combo:
-                    print(f"[GPIO] Detected combination: {combo['name']}")
-                    return combo
+            combo_set = set(combo_pins)
+            
+            # Check if exactly these buttons are pressed
+            if current_pressed == combo_set:
+                # New combination detected
+                if self._held_buttons != combo_set:
+                    self._held_buttons = combo_set.copy()
+                    self._combination_start_time = current_time
+                    print(f"[GPIO] Potential combination detected: {combo['name']}, holding...")
+                    return None
+                
+                # Check if held long enough
+                hold_time = float(combo.get('hold_time', self._default_hold_time))
+                if current_time - self._combination_start_time >= hold_time:
+                    if self._active_combination != combo:
+                        print(f"[GPIO] Combination activated after {hold_time:.1f}s hold: {combo['name']}")
+                        return combo
+                return None
+                
+        # No matching combination, reset hold state
+        self._held_buttons.clear()
+        self._combination_start_time = 0.0
         return None
 
     def _handle_button_states(self) -> None:
         """Process current button states and detect combinations."""
         current_time = time.monotonic()
         currently_pressed = set()
+        newly_pressed = set()
 
         # Check each button's current state
         for pin, state in self._button_states.items():
             try:
                 current_state = gpio.input(pin)
+                pin_int = int(pin)
                 
-                # Detect press (transition from HIGH to LOW)
-                if state.last_state == 1 and current_state == 0:
-                    if current_time - state.last_press_time > self._debounce_time:
-                        state.is_pressed = True
-                        state.last_press_time = current_time
-                        print(f"[GPIO] Pin {pin} pressed")
-                        currently_pressed.add(pin)
+                # Detect state changes
+                if state.last_state != current_state:
+                    # Button pressed (transition from HIGH to LOW)
+                    if current_state == 0:
+                        if current_time - state.last_press_time > self._debounce_time:
+                            state.is_pressed = True
+                            state.last_press_time = current_time
+                            state.was_in_combo = False  # Reset combo state on new press
+                            print(f"[GPIO] Pin {pin} pressed")
+                            newly_pressed.add(pin_int)
+                    # Button released (transition from LOW to HIGH)
+                    else:
+                        if pin_int in self._held_buttons:
+                            state.was_in_combo = True
                 
                 # Update last known state
                 state.last_state = current_state
                 
-                # Add to currently pressed if still held down
+                # Track currently held buttons
                 if current_state == 0:
-                    currently_pressed.add(pin)
+                    currently_pressed.add(pin_int)
                 
             except Exception as e:
                 print(f"[GPIO] Error reading pin {pin}: {e}")
 
         # Check for combinations
-        combo = self._check_combinations(currently_pressed)
+        combo = self._check_combinations(currently_pressed, current_time)
         if combo:
+            # Mark all combo buttons
+            for pin in [int(p) for p in combo['buttons']]:
+                if pin in self._button_states:
+                    self._button_states[pin].was_in_combo = True
+            
             # Handle combination action
             print(f"[GPIO] Executing combination action: {combo['name']} -> {combo['path']}")
             if hasattr(self, '_action_handler'):
                 self._action_handler.execute_action(combo['path'])
             self._active_combination = combo
-        elif len(currently_pressed) == 1:
-            # Handle single button press if exactly one button is pressed
-            pin = list(currently_pressed)[0]
-            if str(pin) in self._config['gpio']['buttons']:
+            
+        # Handle single button presses
+        elif len(newly_pressed) == 1:
+            pin = list(newly_pressed)[0]
+            state = self._button_states.get(pin)
+            
+            # Only trigger if button wasn't part of a combo
+            if state and not state.was_in_combo and str(pin) in self._config['gpio']['buttons']:
                 button_config = self._config['gpio']['buttons'][str(pin)]
                 print(f"[GPIO] Executing single button action: {button_config['name']} -> {button_config['path']}")
                 if hasattr(self, '_action_handler'):
