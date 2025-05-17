@@ -31,33 +31,33 @@
     },
     "media": {
         "home": {
-            "mode": "flash",
-            "path": "demo1/1_Flag and Logo_J.gif"
+            "mode": "image_still",
+            "path": "atc_engine/image_sets/set0/photo-1481349518771-20055b2a7b24.jpg"
         },
         "follow_me": {
-            "mode": "still",
+            "mode": "image_still",
             "button" : "btn1",
-            "path": "demo1/2_Followme.gif"
+            "path": "atc_engine/image_sets/set0/photo-1494253109108-2e30c049369b.jpg"
         },
         "stop": {
-            "mode": "still",
+            "mode": "image_still",
             "button" : "btn2",
-            "path": "demo1/3_STOP.gif"
+            "path": "atc_engine/image_sets/set1/photo-1504309092620-4d0ec726efa4.jpg"
         },
         "keep_distance": {
-            "mode": "still",
+            "mode": "image_flash",
             "button" : "btn3",
-            "path": "demo1/4_Keep Distance.gif"
+            "path": "atc_engine/image_sets/set1/photo-1613336026275-d6d473084e85.jpg"
         },
         "keep_right": {
-            "mode": "still",
+            "mode": "image_flash",
             "button" : "btn4",
-            "path": "demo1/5_Keep Right.gif"
+            "path": "atc_engine/image_sets/set2/photo-1505740420928-5e560c06d30e.jpg"
         },
         "keep_left": {
-            "mode": "still",
+            "mode": "image_flash",
             "button" : "btn5",
-            "path": "demo1/6_Keep Left.gif"
+            "path": "atc_engine/image_sets/set2/premium_photo-1661629473263-572a.jpg"
         },
         "slide": {
             "mode": "slide",
@@ -65,9 +65,15 @@
             "path": "demo1/"
         },
         "thank_you": {
-            "mode": "still",
+            "mode": "image_still",
             "button" : ["btn5", "btn6"],
             "path": "demo1/7_Thank You.gif"
+        },
+        "warning_flash": {
+            "mode": "image_flash",
+            "button": ["btn1", "btn6"],
+            "path": "demo/STOP.gif",
+            "hold_time": 0.5
         },
         "scroll_text": {
             "mode": "scroll_text",
@@ -91,6 +97,8 @@
         "debounce_time": 0.5,
         "poll_interval": 0.05,
         "default_combo_hold_time": 1.0,
-        "default_media_name": "home"
+        "default_media_name": "home",
+        "image_flash_duty_cycle": 0.75,
+        "image_flash_duration": 1.0
     }
 }

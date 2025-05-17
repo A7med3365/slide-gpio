@@ -6,9 +6,8 @@ from .gpio_monitor import GPIOMonitor
 class Application:
     """Main application class."""
 
-    def __init__(self, config_path: str, action_handler: ActionHandler):
+    def __init__(self, config_path: str):
         self._config_path = config_path
-        self._action_handler = action_handler
         self._gpio_monitor = None
         self._shutdown_event = threading.Event()
         self._app_config = {}
@@ -16,12 +15,22 @@ class Application:
             with open(config_path, 'r') as f:
                 self._app_config = json.load(f)
         except Exception as e:
-            print(f"[App] Error loading configuration for default media: {e}")
+            print(f"[App] Error loading configuration: {e}")
             # self._app_config remains {} or handle error more gracefully
+
+        settings = self._app_config.get('settings', {})
+        flash_duty_cycle = settings.get('image_flash_duty_cycle', 0.75)
+        flash_duration = settings.get('image_flash_duration', 1.0)
+
+        self._action_handler = ActionHandler(flash_duty_cycle=flash_duty_cycle, flash_duration=flash_duration)
 
     def run(self) -> None:
         """Start the application and its components."""
         print("[App] Starting application")
+
+        if self._action_handler:
+            print("[App] Starting ActionHandler services...")
+            self._action_handler.start_services()
 
         # Trigger default media action
         default_media_name = self._app_config.get('settings', {}).get('default_media_name')
@@ -57,6 +66,10 @@ class Application:
         """Stop the application and its components."""
         print("[App] Stopping application")
         self._shutdown_event.set()
+
+        if self._action_handler:
+            print("[App] Stopping ActionHandler services...")
+            self._action_handler.stop_services()
 
         if self._gpio_monitor:
             self._gpio_monitor.stop()
