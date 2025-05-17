@@ -22,7 +22,12 @@ class Application:
         flash_duty_cycle = settings.get('image_flash_duty_cycle', 0.75)
         flash_duration = settings.get('image_flash_duration', 1.0)
 
-        self._action_handler = ActionHandler(flash_duty_cycle=flash_duty_cycle, flash_duration=flash_duration)
+        media_config = self._app_config.get('media', {})
+        self._action_handler = ActionHandler(
+            media_config=media_config,
+            flash_duty_cycle=flash_duty_cycle,
+            flash_duration=flash_duration
+        )
 
     def run(self) -> None:
         """Start the application and its components."""
@@ -30,7 +35,9 @@ class Application:
 
         if self._action_handler:
             print("[App] Starting ActionHandler services...")
-            self._action_handler.start_services()
+            self._action_handler.start_services() # Creates ImageDisplay instance
+        
+        image_service = self._action_handler.image_display_service
 
         # Trigger default media action
         default_media_name = self._app_config.get('settings', {}).get('default_media_name')
@@ -51,26 +58,43 @@ class Application:
             print("[App] No default media name specified in configuration.")
 
         self._gpio_monitor = GPIOMonitor(self._config_path, self._action_handler)
-        self._gpio_monitor.start()
+        self._gpio_monitor.start() # GPIO runs in background thread
 
         try:
-            while not self._shutdown_event.is_set():
-                self._shutdown_event.wait(timeout=0.1)
+            if image_service:
+                print("[App] Starting ImageDisplay Pygame loop in main thread...")
+                image_service.run() # BLOCKING CALL
+                print("[App] ImageDisplay Pygame loop finished.")
+            else:
+                print("[App] No ImageDisplay service. Waiting for shutdown signal.")
+                # Fallback if no UI, or app can just proceed to shutdown if this is not desired
+                while not self._shutdown_event.is_set():
+                    self._shutdown_event.wait(timeout=0.1)
+                
         except KeyboardInterrupt:
             print("\n[App] Keyboard interrupt received")
-            self.stop()
+            # self.stop() will be called in finally
+        finally:
+            print("[App] Main loop ended or interrupted, initiating stop...")
+            self.stop() # Ensure all services are stopped
 
         print("[App] Application stopped")
 
     def stop(self) -> None:
         """Stop the application and its components."""
         print("[App] Stopping application")
-        self._shutdown_event.set()
+        self._shutdown_event.set() # Signal GPIOMonitor and any other listeners
 
         if self._action_handler:
-            print("[App] Stopping ActionHandler services...")
+            print("[App] Stopping ActionHandler services (queues stop for ImageDisplay)...")
             self._action_handler.stop_services()
 
         if self._gpio_monitor:
+            print("[App] Stopping GPIOMonitor...")
             self._gpio_monitor.stop()
             self._gpio_monitor.join(timeout=2.0)
+            print("[App] GPIOMonitor stopped.")
+        
+        # No explicit join for image_service here as its run() method (blocking in main thread)
+        # will have exited or is being signaled to exit by ActionHandler.stop_services()
+        print("[App] Stop sequence complete.")

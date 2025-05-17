@@ -265,7 +265,7 @@ class GPIOMonitor(threading.Thread):
                             if self._default_media_name:
                                 default_media_details = self._config.get('media', {}).get(self._default_media_name)
                                 if default_media_details:
-                                    print(f"[GPIO] Returning to home state: {self._default_media_name}")
+                                    print(f"[GPIO] Re-press of active action '{action_item_name_to_trigger}'. Returning to home: '{self._default_media_name}'")
                                     self._action_handler.execute_action(
                                         name=self._default_media_name,
                                         mode=default_media_details['mode'],
@@ -282,7 +282,7 @@ class GPIOMonitor(threading.Thread):
                             break # Processed this pin, move to next _handle_button_states cycle
                         else:
                             # Original behavior: trigger the action associated with this single button
-                            print(f"[GPIO] Executing single button action: Name='{action_item_name_to_trigger}', Mode='{action_item_details_to_trigger['mode']}', Path='{action_item_details_to_trigger.get('path')}' for button '{button_name}'")
+                            print(f"[GPIO] Executing single action: Name='{action_item_name_to_trigger}', Mode='{action_item_details_to_trigger['mode']}', Path='{action_item_details_to_trigger.get('path')}'")
                             self._action_handler.execute_action(
                                 name=action_item_name_to_trigger,
                                 mode=action_item_details_to_trigger['mode'],

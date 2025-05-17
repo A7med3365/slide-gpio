@@ -5,10 +5,11 @@ from .image_display import ImageDisplay
 class ActionHandler:
     """Handles the execution of actions when buttons are pressed."""
     
-    def __init__(self, flash_duty_cycle: float, flash_duration: float):
-        self._lock = threading.Lock()
+    def __init__(self, media_config: Dict[str, Dict[str, Any]], flash_duty_cycle: float, flash_duration: float):
+        self._lock = threading.RLock()
         self._current_action_details: Optional[Dict[str, Any]] = None
-        self._image_display_thread: Optional[ImageDisplay] = None
+        self._image_display_service: Optional[ImageDisplay] = None
+        self._media_config = media_config
         self.flash_duty_cycle = flash_duty_cycle
         self.flash_duration = flash_duration
     
@@ -19,24 +20,27 @@ class ActionHandler:
         return None
 
     def start_services(self) -> None:
-        """Starts the ImageDisplay service if not already running."""
+        """Instantiates the ImageDisplay service if it doesn't exist."""
         with self._lock:
-            if self._image_display_thread is None:
-                self._image_display_thread = ImageDisplay(
+            if self._image_display_service is None:
+                self._image_display_service = ImageDisplay(
+                    media_config=self._media_config,
                     flash_duty_cycle=self.flash_duty_cycle,
                     flash_duration=self.flash_duration
                 )
-                self._image_display_thread.start()
-                print("[ActionHandler] ImageDisplay service started.")
+                print("[ActionHandler] ImageDisplay service instance created.")
+
+    @property
+    def image_display_service(self) -> Optional[ImageDisplay]:
+        return self._image_display_service
 
     def stop_services(self) -> None:
-        """Stops the ImageDisplay service."""
+        """Requests the ImageDisplay service to stop."""
         with self._lock:
-            if self._image_display_thread is not None and self._image_display_thread.is_alive():
-                self._image_display_thread.stop()
-                self._image_display_thread.join(timeout=2.0)
-                print("[ActionHandler] ImageDisplay service stopped.")
-                self._image_display_thread = None # Clear the reference
+            if self._image_display_service is not None:
+                print("[ActionHandler] Requesting ImageDisplay service to stop...")
+                self._image_display_service.stop_display() # This queues the 'stop' command
+                self._image_display_service = None # Clear the reference
     
     def execute_action(self, name: str, mode: str, path: Optional[str] = None) -> None:
         """Executes the specified action."""
@@ -54,25 +58,23 @@ class ActionHandler:
 
             # Now, handle the new action
             if mode == "image_still" or mode == "image_flash":
-                if self._image_display_thread is None or not self._image_display_thread.is_alive():
-                    # This check might be redundant if Application ensures start_services is called.
-                    # However, it's a good safeguard.
-                    print("[ActionHandler] ImageDisplay service was not running. Starting it now.")
-                    self.start_services() # This will also acquire lock
-
-                if self._image_display_thread: # Check again after potential start
-                    if path:
-                        self._image_display_thread.set_image(image_path=path, mode=mode)
-                        self._current_action_details = {'name': name, 'mode': mode, 'path': path}
-                        print(f"[ActionHandler] Starting: {name} (Mode: {mode}, Path: {path})")
-                    else:
-                        print(f"[ActionHandler] Error: No path provided for image mode {mode}")
-                        if self._image_display_thread: # Ensure it exists before calling clear
-                             self._image_display_thread.clear_image()
-                        self._current_action_details = None # Action failed or is a clear
-                else:
-                    print(f"[ActionHandler] Error: ImageDisplay service could not be started for {name}.")
+                if self._image_display_service is None:
+                    # This should ideally not happen if start_services was called by Application
+                    print("[ActionHandler] Error: ImageDisplay service not initialized. Cannot execute image action.")
                     self._current_action_details = None
+                    return # Cannot proceed
+
+                # Ensure _image_display_service exists (it should have been created by start_services)
+                if path:
+                    print(f"[ActionHandler] Queuing 'set_image' for ImageDisplay: Path='{path}', Mode='{mode}'")
+                    self._image_display_service.set_image(image_path=path, mode=mode)
+                    self._current_action_details = {'name': name, 'mode': mode, 'path': path}
+                    # print(f"[ActionHandler] Queued image: {name} (Mode: {mode}, Path: {path})") # Original log, commented out or removed
+                else: # No path, means clear the display for this action
+                    print(f"[ActionHandler] Clearing image display for action: {name} (Mode: {mode})")
+                    self._image_display_service.clear_image()
+                    # Setting details even for a clear, as it's an explicit action
+                    self._current_action_details = {'name': name, 'mode': mode, 'path': None}
 
             else: # Other action modes
                 # Placeholder for other action types
@@ -91,8 +93,9 @@ class ActionHandler:
                 print(f"[ActionHandler] Stopping: {action_name} (Mode: {action_mode})")
 
                 if action_mode == "image_still" or action_mode == "image_flash":
-                    if self._image_display_thread and self._image_display_thread.is_alive():
-                        self._image_display_thread.clear_image()
+                    if self._image_display_service:
+                        print(f"[ActionHandler] Queuing 'clear_image' for ImageDisplay for stopped action: {self._current_action_details['name']}")
+                        self._image_display_service.clear_image()
                 
                 # Placeholder for stopping other types of actions
                 # e.g., if action_mode == "scroll_text": self._text_scroller.stop()
