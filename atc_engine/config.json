@@ -1,41 +1,96 @@
 {
-    "gpio": {
-        "buttons": {
-            "32": {
-                "name": "button1",
-                "path": "demo1/1_Flag and Logo_J.gif"
-            },
-            "33": {
-                "name": "button2", 
-                "path": "demo1/2_Followme.gif"
-            },
-            "34": {
-                "name": "button3",
-                "path": "demo1/3_STOP.gif"
-            },
-            "35": {
-                "name": "button4",
-                "path": "demo1/4_Keep Distance.gif"
-            }
+    "buttons": {
+        "btn1": {
+            "value": 32,
+            "mode": "press"
         },
-        "combinations": [
-            {
-                "buttons": ["32", "33"],
-                "name": "combo1",
-                "path": "demo1/5_Keep Right.gif",
-                "hold_time": 2.0
-            },
-            {
-                "buttons": ["34", "35"],
-                "name": "combo2", 
-                "path": "demo1/6_Keep Left.gif",
-                "hold_time": 1.5
-            }
-        ],
-        "settings": {
-            "debounce_time": 0.5,
-            "poll_interval": 0.05,
-            "default_combo_hold_time": 1.0
+        "btn2": {
+            "value": 33,
+            "mode": "press"
+        },
+        "btn3": {
+            "value": 34,
+            "mode": "press"
+        },
+        "btn4": {
+            "value": 35,
+            "mode": "press"
+        },
+        "btn5": {
+            "value": 36,
+            "mode": "press"
+        },
+        "btn6": {
+            "value": 68,
+            "mode": "press"
+        },
+        "shutdown": {
+            "value": 71,
+            "mode": "toggle"
         }
+    },
+    "media": {
+        "home": {
+            "mode": "flash",
+            "path": "demo1/1_Flag and Logo_J.gif"
+        },
+        "follow_me": {
+            "mode": "still",
+            "button" : "btn1",
+            "path": "demo1/2_Followme.gif"
+        },
+        "stop": {
+            "mode": "still",
+            "button" : "btn2",
+            "path": "demo1/3_STOP.gif"
+        },
+        "keep_distance": {
+            "mode": "still",
+            "button" : "btn3",
+            "path": "demo1/4_Keep Distance.gif"
+        },
+        "keep_right": {
+            "mode": "still",
+            "button" : "btn4",
+            "path": "demo1/5_Keep Right.gif"
+        },
+        "keep_left": {
+            "mode": "still",
+            "button" : "btn5",
+            "path": "demo1/6_Keep Left.gif"
+        },
+        "slide": {
+            "mode": "slide",
+            "button" : "btn6",
+            "path": "demo1/"
+        },
+        "thank_you": {
+            "mode": "still",
+            "button" : ["btn5", "btn6"],
+            "path": "demo1/7_Thank You.gif"
+        },
+        "scroll_text": {
+            "mode": "scroll_text",
+            "button" : ["btn3", "btn4"],
+            "hold_time": 1.5,
+            "path":"demo1/welcome.txt"
+        }
+    },
+    "actions": {
+        "hdmi_control": {
+            "mode": "hdmi_control",
+            "button" : "shutdown"
+        },
+        "load_config": {
+            "mode": "load_config",
+            "button" : ["btn1", "btn2"],
+            "hold_time": 2.0
+        }
+    },
+    "settings": {
+        "debounce_time": 0.5,
+        "poll_interval": 0.05,
+        "default_combo_hold_time": 1.0,
+        "default_media_name": "home"
     }
 }
