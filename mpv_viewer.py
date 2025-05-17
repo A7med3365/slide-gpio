@@ -57,7 +57,17 @@ def main():
     try:
         if os.path.isfile(args.path):
             print(f"Displaying image with mpv: {args.path}")
-            mpv_cmd = mpv_base_cmd + ['--loop-file=inf', args.path]
+            is_gif = args.path.lower().endswith('.gif')
+            # Options specifically for enhancing GIF playback performance
+            gif_performance_opts = ['--hwdec=auto', '--framedrop=vo', '--cache=yes']
+
+            if is_gif:
+                # For GIFs, combine base command, GIF options, loop option, and path
+                mpv_cmd = mpv_base_cmd + gif_performance_opts + ['--loop-file=inf', args.path]
+            else:
+                # For other single images, combine base command, loop option, and path
+                mpv_cmd = mpv_base_cmd + ['--loop-file=inf', args.path]
+            
             mpv_process = subprocess.run(mpv_cmd, check=False) # check=False to handle mpv's own exit codes
 
         elif os.path.isdir(args.path):
