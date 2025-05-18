@@ -1,6 +1,7 @@
 import threading
 from typing import Optional, Dict, Any
 from .image_display import ImageDisplay
+from .hdmi_controller import HDMIController
 
 class ActionHandler:
     """Handles the execution of actions when buttons are pressed."""
@@ -23,7 +24,8 @@ class ActionHandler:
         self._default_scroll_font_size = scroll_text_font_size
         self._default_scroll_font_color = scroll_text_font_color
         self._default_scroll_bg_color = scroll_text_bg_color
-    
+        self._hdmi_controller = HDMIController()
+
     @property
     def current_action_name(self) -> Optional[str]:
         if self._current_action_details:
@@ -88,14 +90,17 @@ class ActionHandler:
                     self._current_action_details = None # Action failed
             
             elif mode == "hdmi_control":
-                if self._image_display_service:
-                    display_text = f"HDMI Control: {name}"
-                    print(f"[ActionHandler] Queuing 'display_text' for ImageDisplay: Text='{display_text}'")
-                    self._image_display_service.display_text(text=display_text)
+                if self._hdmi_controller:
+                    self._hdmi_controller.toggle_hdmi()
+                    display_text = self._hdmi_controller.get_hdmi_status_message() # Get status after toggle
+                    print(f"[ActionHandler] HDMI Toggled. Status: {display_text}")
+                    if self._image_display_service:
+                        self._image_display_service.display_text(text=display_text)
                 else:
-                    print(f"[ActionHandler] Error: ImageDisplay service not available for mode '{mode}'.")
+                    print(f"[ActionHandler] Error: HDMIController not available for mode '{mode}'.")
+                    if self._image_display_service: # Still display an error if possible
+                        self._image_display_service.display_text(text="HDMI Ctrl Error")
                     self._current_action_details = None # Action failed
-                # Actual HDMI control logic would go here in a real implementation
 
             elif mode == "load_config":
                 if self._image_display_service:
