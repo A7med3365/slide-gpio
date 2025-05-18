@@ -37,7 +37,8 @@ class Application:
             scroll_text_speed=scroll_text_speed,
             scroll_text_font_size=scroll_text_font_size,
             scroll_text_font_color=scroll_text_font_color,
-            scroll_text_bg_color=scroll_text_bg_color
+            scroll_text_bg_color=scroll_text_bg_color,
+            app_config_path=self._config_manager.get_config_path() # Pass app_config_path
         )
 
     def run(self) -> None:

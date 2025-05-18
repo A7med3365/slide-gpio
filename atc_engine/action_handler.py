@@ -2,6 +2,7 @@ import threading
 from typing import Optional, Dict, Any
 from .image_display import ImageDisplay
 from .hdmi_controller import HDMIController
+from .config_updater import ConfigUpdater # Added import
 
 class ActionHandler:
     """Handles the execution of actions when buttons are pressed."""
@@ -13,18 +14,21 @@ class ActionHandler:
                  scroll_text_speed: int,
                  scroll_text_font_size: int,
                  scroll_text_font_color: str,
-                 scroll_text_bg_color: Optional[str]):
-        self._lock = threading.RLock()
-        self._current_action_details: Optional[Dict[str, Any]] = None
-        self._image_display_service: Optional[ImageDisplay] = None
-        self._media_config = media_config
-        self.flash_duty_cycle = flash_duty_cycle
-        self.flash_duration = flash_duration
-        self._default_scroll_speed = scroll_text_speed
-        self._default_scroll_font_size = scroll_text_font_size
-        self._default_scroll_font_color = scroll_text_font_color
-        self._default_scroll_bg_color = scroll_text_bg_color
-        self._hdmi_controller = HDMIController()
+                 scroll_text_bg_color: Optional[str],
+                 app_config_path: str): # Added app_config_path
+       self._lock = threading.RLock()
+       self._current_action_details: Optional[Dict[str, Any]] = None
+       self._image_display_service: Optional[ImageDisplay] = None
+       self._media_config = media_config
+       self.flash_duty_cycle = flash_duty_cycle
+       self.flash_duration = flash_duration
+       self._default_scroll_speed = scroll_text_speed
+       self._default_scroll_font_size = scroll_text_font_size
+       self._default_scroll_font_color = scroll_text_font_color
+       self._default_scroll_bg_color = scroll_text_bg_color
+       self._hdmi_controller = HDMIController()
+       self._app_config_path = app_config_path # Store app_config_path
+       self._config_updater = ConfigUpdater(action_handler_ref=self, app_config_path=self._app_config_path) # Instantiate ConfigUpdater
 
     @property
     def current_action_name(self) -> Optional[str]:
@@ -103,14 +107,21 @@ class ActionHandler:
                     self._current_action_details = None # Action failed
 
             elif mode == "load_config":
+                display_text = "Starting USB update process..."
+                print(f"[ActionHandler] {display_text}")
                 if self._image_display_service:
-                    display_text = f"Load Config: {name}"
-                    print(f"[ActionHandler] Queuing 'display_text' for ImageDisplay: Text='{display_text}'")
                     self._image_display_service.display_text(text=display_text)
+                
+                # Start the USB update process via ConfigUpdater
+                if self._config_updater:
+                    print(f"[ActionHandler] Calling ConfigUpdater to start USB update process for action: {name}")
+                    self._config_updater.start_usb_update_process()
                 else:
-                    print(f"[ActionHandler] Error: ImageDisplay service not available for mode '{mode}'.")
-                    self._current_action_details = None # Action failed
-                # Actual config loading logic would go here
+                    # This case should ideally not happen if __init__ is correct
+                    print(f"[ActionHandler] Error: ConfigUpdater not available for mode '{mode}'.")
+                    if self._image_display_service:
+                        self._image_display_service.display_text(text="Update Error")
+                    if self._current_action_details and self._current_action_details['name'] == name : self._current_action_details = None # Action failed
 
             elif mode == "scroll_text":
                 if self._image_display_service:

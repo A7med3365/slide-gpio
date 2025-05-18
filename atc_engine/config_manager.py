@@ -128,6 +128,9 @@ class ConfigManager:
                 })
         return combined
 
+def get_config_path(self) -> str:
+        """Returns the path to the configuration file."""
+        return self._config_path
 if __name__ == '__main__':
     # Example usage (assuming a config.json exists in the same directory or a valid path is given)
     try:
