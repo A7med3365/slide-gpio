@@ -1,9 +1,10 @@
 import json
 import threading
 import time
-from typing import Dict, Set, Optional, Any # Retained Dict for consistency with original, though GPIOMonitor itself might not use it directly.
+from typing import Dict, Set, Optional, Any
 from atc_engine.action_handler import ActionHandler
 from atc_engine.button_state import ButtonState
+from .config_manager import ConfigManager
 
 try:
     from pyA64.gpio import gpio
@@ -22,29 +23,31 @@ except ImportError:
 class GPIOMonitor(threading.Thread):
     """Monitors GPIO buttons with support for combinations."""
 
-    def __init__(self, config_path: str, action_handler: ActionHandler):
-        """Initialize GPIO monitor with configuration from JSON file."""
+    def __init__(self, config_manager: ConfigManager, action_handler: ActionHandler):
+        """Initialize GPIO monitor with configuration from ConfigManager."""
         super().__init__(name="GPIOMonitorThread")
         self.daemon = True
         self._shutdown_event = threading.Event()
         self._lock = threading.Lock()
-        self._action_handler = action_handler # ActionHandler instance
-        
-        # Load configuration
-        self._config: Dict[str, Any] = {} # Will be populated by _load_config
-        self._load_config(config_path)
+        self._action_handler = action_handler
+        self._config_manager = config_manager # Store ConfigManager instance
+        # self._config: Dict[str, Any] = {} # Remove
+        # self._load_config(config_path) # Remove
 
-        # Load default media name from config
-        self._default_media_name: Optional[str] = self._config.get('settings', {}).get('default_media_name')
+        settings = self._config_manager.get_settings()
+        self._debounce_time = float(settings.get('debounce_time', 0.3))
+        self._poll_interval = float(settings.get('poll_interval', 0.05))
+        self._default_hold_time = float(settings.get('default_combo_hold_time', 1.0))
+        
+        self._default_media_name = self._config_manager.get_default_media_name()
         if self._default_media_name:
             print(f"[GPIO] Default media name loaded: {self._default_media_name}")
         else:
             print("[GPIO] No default_media_name found in settings.")
-        
-        # Initialize button states and pin-to-name mapping
+
         self._button_states: Dict[int, ButtonState] = {}
         self._pin_to_button_name: Dict[int, str] = {}
-        for btn_name, button_details in self._config.get('buttons', {}).items():
+        for btn_name, button_details in self._config_manager.get_buttons_config().items(): # Use ConfigManager
             pin_value = int(button_details['value'])
             self._button_states[pin_value] = ButtonState()
             self._pin_to_button_name[pin_value] = btn_name
@@ -53,43 +56,34 @@ class GPIOMonitor(threading.Thread):
         self._active_combination_info: Optional[Dict[str, Any]] = None # Stores name, mode, path of active combo
         self._combination_start_time: float = 0.0
         self._held_buttons_for_combo: Set[str] = set() # Stores button names for current potential combo
-        self._default_hold_time: float = self._config.get('settings', {}).get('default_combo_hold_time', 1.0)
-
-        # Prepare combined actions list
-        self._combined_actions: list[Dict[str, Any]] = []
-        for action_type, actions_dict in [("media", self._config.get('media', {})),
-                                          ("action", self._config.get('actions', {}))]:
-            for name, details in actions_dict.items():
-                self._combined_actions.append({
-                    'name': name,
-                    'details': details,
-                    'type': action_type
-                })
+        
+        self._combined_actions = self._config_manager.get_combined_actions() # Get from ConfigManager
         
         print(f"[GPIO] Monitor initialized. Buttons: {len(self._button_states)}, Combined Actions: {len(self._combined_actions)}")
 
-    def _load_config(self, config_path: str) -> None:
-        """Load and validate configuration from JSON file."""
-        try:
-            with open(config_path, 'r') as f:
-                self._config = json.load(f) # Store entire config
+    # def _load_config(self, config_path: str) -> None: # Removed
+    #     """Load and validate configuration from JSON file."""
+    #     try:
+    #         with open(config_path, 'r') as f:
+    #             self._config = json.load(f) # Store entire config
             
-            # Extract settings with defaults
-            settings = self._config.get('settings', {})
-            self._debounce_time: float = float(settings.get('debounce_time', 0.3))
-            self._poll_interval: float = float(settings.get('poll_interval', 0.05))
-            # self._default_hold_time is now set in __init__
+    #         # Extract settings with defaults
+    #         settings = self._config.get('settings', {})
+    #         self._debounce_time: float = float(settings.get('debounce_time', 0.3))
+    #         self._poll_interval: float = float(settings.get('poll_interval', 0.05))
+    #         # self._default_hold_time is now set in __init__
             
-            print(f"[GPIO] Loaded configuration from {config_path}")
-        except Exception as e:
-            print(f"[GPIO] Error loading configuration from {config_path}: {e}")
-            raise
+    #         print(f"[GPIO] Loaded configuration from {config_path}")
+    #     except Exception as e:
+    #         print(f"[GPIO] Error loading configuration from {config_path}: {e}")
+    #         raise
 
     def _init_gpio(self) -> bool:
         """Initialize GPIO hardware."""
         try:
             gpio.init()
-            for button_details in self._config.get('buttons', {}).values():
+            # for button_details in self._config.get('buttons', {}).values(): # Old
+            for button_details in self._config_manager.get_buttons_config().values(): # New
                 pin = int(button_details['value'])
                 gpio.setcfg(pin, gpio.INPUT)
                 gpio.pullup(pin, gpio.PULLUP)
@@ -263,7 +257,7 @@ class GPIOMonitor(threading.Thread):
                         if action_item_name_to_trigger == current_active_action_name:
                             print(f"[GPIO] Single press on active action button '{button_name}' ({action_item_name_to_trigger}).")
                             if self._default_media_name:
-                                default_media_details = self._config.get('media', {}).get(self._default_media_name)
+                                default_media_details = self._config_manager.get_media_config().get(self._default_media_name) # New
                                 if default_media_details:
                                     print(f"[GPIO] Re-press of active action '{action_item_name_to_trigger}'. Returning to home: '{self._default_media_name}'")
                                     self._action_handler.execute_action(

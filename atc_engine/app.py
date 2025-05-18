@@ -2,32 +2,35 @@ import threading
 import json
 from .action_handler import ActionHandler
 from .gpio_monitor import GPIOMonitor
+from .config_manager import ConfigManager, ConfigError
 
 class Application:
     """Main application class."""
 
     def __init__(self, config_path: str):
         self._config_path = config_path
+        try:
+            self._config_manager = ConfigManager(config_path)
+        except ConfigError as e:
+            print(f"[App] Critical configuration error: {e}")
+            # Decide how to handle: raise, exit, or run with defaults/limited functionality
+            # For now, let's re-raise to stop the app if config is fundamentally flawed.
+            raise
+        
         self._gpio_monitor = None
         self._shutdown_event = threading.Event()
-        self._app_config = {}
-        try:
-            with open(config_path, 'r') as f:
-                self._app_config = json.load(f)
-        except Exception as e:
-            print(f"[App] Error loading configuration: {e}")
-            # self._app_config remains {} or handle error more gracefully
+        # self._app_config = {} # No longer needed directly like this
 
-        settings = self._app_config.get('settings', {})
-        flash_duty_cycle = settings.get('image_flash_duty_cycle', 0.75)
+        settings = self._config_manager.get_settings()
+        flash_duty_cycle = settings.get('image_flash_duty_cycle', 0.75) # Keep defaults here for now
         flash_duration = settings.get('image_flash_duration', 1.0)
         scroll_text_speed = settings.get('scroll_text_speed', 3)
         scroll_text_font_size = settings.get('scroll_text_font_size', 60)
         scroll_text_font_color = settings.get('scroll_text_font_color', "white")
-        scroll_text_bg_color = settings.get('scroll_text_bg_color')
+        scroll_text_bg_color = settings.get('scroll_text_bg_color') # Already handles None
 
-        media_config = self._app_config.get('media', {})
-        self._action_handler = ActionHandler(
+        media_config = self._config_manager.get_media_config()
+        self._action_handler = ActionHandler( # ActionHandler now takes media_config directly
             media_config=media_config,
             flash_duty_cycle=flash_duty_cycle,
             flash_duration=flash_duration,
@@ -48,9 +51,9 @@ class Application:
         image_service = self._action_handler.image_display_service
 
         # Trigger default media action
-        default_media_name = self._app_config.get('settings', {}).get('default_media_name')
+        default_media_name = self._config_manager.get_default_media_name()
         if default_media_name:
-            media_items = self._app_config.get('media', {})
+            media_items = self._config_manager.get_media_config() # Use ConfigManager
             media_item_details = media_items.get(default_media_name)
             if media_item_details:
                 mode = media_item_details.get('mode')
@@ -65,7 +68,8 @@ class Application:
         else:
             print("[App] No default media name specified in configuration.")
 
-        self._gpio_monitor = GPIOMonitor(self._config_path, self._action_handler)
+        # self._gpio_monitor = GPIOMonitor(self._config_path, self._action_handler) # Old
+        self._gpio_monitor = GPIOMonitor(self._config_manager, self._action_handler) # New
         self._gpio_monitor.start() # GPIO runs in background thread
 
         try:
