@@ -9,7 +9,8 @@ from .usb_handler import USBHandler
 from .config_manager import ConfigManager # For validation
 
 if TYPE_CHECKING:
-    from .action_handler import ActionHandler
+    # from .action_handler import ActionHandler # No longer directly needed
+    from .app import Application # For app_ref type hint
 
 class ConfigUpdater:
     """
@@ -20,15 +21,15 @@ class ConfigUpdater:
     _USB_PACKAGE_DIR_NAME = "atc_update_package" # As per USBHandler
     _USB_ASSETS_DIR_NAME = "assets"
 
-    def __init__(self, action_handler_ref: 'ActionHandler', app_config_path: str):
+    def __init__(self, app_ref: 'Application', app_config_path: str):
         """
         Initializes the ConfigUpdater.
 
         Args:
-            action_handler_ref: A reference to the ActionHandler for display feedback.
+            app_ref: A reference to the Application instance.
             app_config_path: Path to the application's current config.json.
         """
-        self._action_handler_ref = action_handler_ref
+        self._app_ref = app_ref # Changed from action_handler_ref
         self._current_config_file_path = os.path.abspath(app_config_path)
         # Determine app_root_dir: parent of the directory containing config.json
         # e.g., if app_config_path is /path/to/project_root/atc_engine/config.json
@@ -55,15 +56,15 @@ class ConfigUpdater:
 
 
     def _display_message(self, message: str):
-        """Helper to display messages via console and ActionHandler's ImageDisplay service."""
+        """Helper to display messages via console and Application's display_message_on_screen method."""
         print(f"[ConfigUpdater] {message}")
-        if self._action_handler_ref and hasattr(self._action_handler_ref, 'image_display_service') and self._action_handler_ref.image_display_service:
+        if self._app_ref and hasattr(self._app_ref, 'display_message_on_screen'):
             try:
-                self._action_handler_ref.image_display_service.display_text(text=message)
+                self._app_ref.display_message_on_screen(message)
             except Exception as e:
-                print(f"[ConfigUpdater] Error displaying message on screen: {e}")
+                print(f"[ConfigUpdater] Error calling app_ref.display_message_on_screen: {e}")
         else:
-            print("[ConfigUpdater] ImageDisplay service not available for on-screen messages.")
+            print("[ConfigUpdater] App reference or display_message_on_screen method not available.")
 
     def _validate_usb_config(self, usb_config_path: str) -> Optional[dict]:
         """
@@ -340,7 +341,11 @@ class ConfigUpdater:
                     update_successful = self._perform_atomic_update(package_path)
                     
                     if update_successful:
-                        self._display_message("Update successful! Please restart the application.")
+                        self._display_message("Update successful! Requesting configuration reload...")
+                        if self._app_ref and hasattr(self._app_ref, 'request_config_reload'):
+                            self._app_ref.request_config_reload(self._current_config_file_path)
+                        else:
+                            self._display_message("App reference or request_config_reload not available. Please restart manually.")
                     else:
                         # _perform_atomic_update should have displayed detailed errors and handled rollback
                         self._display_message("Update failed. System should have rolled back to previous state.")

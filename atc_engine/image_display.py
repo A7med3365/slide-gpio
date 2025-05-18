@@ -61,6 +61,10 @@ class ImageDisplay:
             self._on_time: float = 0.0
             self._off_time: float = 0.0
 
+    @property
+    def is_running(self) -> bool:
+        return self._is_running_loop
+
     def load_and_scale_image(self, file_path: str, screen_size: Tuple[int, int]) -> Tuple[Optional[pygame.Surface], Optional[Tuple[int, int]]]:
         """Loads an image, scales it to fit the screen while maintaining aspect ratio, and returns the scaled image and its centered position."""
         try:

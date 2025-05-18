@@ -1,8 +1,11 @@
 import threading
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, TYPE_CHECKING
 from .image_display import ImageDisplay
 from .hdmi_controller import HDMIController
 from .config_updater import ConfigUpdater # Added import
+
+if TYPE_CHECKING:
+    from .app import Application # Forward reference for type hinting
 
 class ActionHandler:
     """Handles the execution of actions when buttons are pressed."""
@@ -15,7 +18,8 @@ class ActionHandler:
                  scroll_text_font_size: int,
                  scroll_text_font_color: str,
                  scroll_text_bg_color: Optional[str],
-                 app_config_path: str): # Added app_config_path
+                 app_config_path: str,
+                 app_ref: 'Application'): # Added app_ref
        self._lock = threading.RLock()
        self._current_action_details: Optional[Dict[str, Any]] = None
        self._image_display_service: Optional[ImageDisplay] = None
@@ -28,7 +32,8 @@ class ActionHandler:
        self._default_scroll_bg_color = scroll_text_bg_color
        self._hdmi_controller = HDMIController()
        self._app_config_path = app_config_path # Store app_config_path
-       self._config_updater = ConfigUpdater(action_handler_ref=self, app_config_path=self._app_config_path) # Instantiate ConfigUpdater
+       # Pass app_ref to ConfigUpdater instead of self (action_handler_ref)
+       self._config_updater = ConfigUpdater(app_ref=app_ref, app_config_path=self._app_config_path)
 
     @property
     def current_action_name(self) -> Optional[str]:
