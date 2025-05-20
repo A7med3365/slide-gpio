@@ -93,6 +93,3 @@ if __name__ == '__main__':
     time.sleep(2)
     controller.toggle_hdmi() # Turn ON
     print(controller.get_hdmi_status_message())
-    time.sleep(2)
-    controller.turn_off_hdmi() # Explicitly OFF
-    print(controller.get_hdmi_status_message())
