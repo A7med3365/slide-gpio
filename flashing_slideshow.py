@@ -7,8 +7,8 @@ import argparse
 import time
 
 # --- Configuration ---
-FLASH_DURATION = 1.0  # Total time for one flash cycle in seconds (e.g., 1.0)
-FLASH_DUTY_CYCLE = 0.75  # Proportion of FLASH_DURATION for which image is visible (e.g., 0.75)
+FLASH_DURATION = 1.5  # Total time for one flash cycle in seconds (e.g., 1.0)
+FLASH_DUTY_CYCLE = 0.8  # Proportion of FLASH_DURATION for which image is visible (e.g., 0.75)
 IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.bmp'] # Common image extensions
 
 def find_image_files(directory):
@@ -75,6 +75,7 @@ def main():
 
     print(f"Searching for images in: {args.image_directory}")
     image_files = find_image_files(args.image_directory)
+    image_files.sort()
 
     if not image_files:
         if os.path.isdir(args.image_directory): # Directory exists but no images
