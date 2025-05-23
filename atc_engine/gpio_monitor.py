@@ -5,19 +5,7 @@ from typing import Dict, Set, Optional, Any
 from atc_engine.action_handler import ActionHandler
 from atc_engine.button_state import ButtonState
 from .config_manager import ConfigManager
-
-try:
-    from pyA64.gpio import gpio
-except ImportError:
-    print("[GPIO] Warning: pyA64.gpio module not found. Running in simulation mode.")
-    class MockGPIO:
-        INPUT = 1
-        PULLUP = 1
-        def init(self): pass
-        def setcfg(self, *args): pass
-        def pullup(self, *args): pass
-        def input(self, pin): return 1 # Default to not pressed (high for pull-up)
-    gpio = MockGPIO()
+from pyA64.gpio import gpio
 
 class GPIOMonitor(threading.Thread):
     """Monitors GPIO buttons with support for combinations."""

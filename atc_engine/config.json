@@ -2,27 +2,27 @@
     "buttons": {
         "btn1": {
             "value": 32,
-            "mode": "press"
+            "mode": "toggle"
         },
         "btn2": {
             "value": 33,
-            "mode": "press"
+            "mode": "toggle"
         },
         "btn3": {
             "value": 34,
-            "mode": "press"
+            "mode": "toggle"
         },
         "btn4": {
             "value": 35,
-            "mode": "press"
+            "mode": "toggle"
         },
         "btn5": {
             "value": 36,
-            "mode": "press"
+            "mode": "toggle"
         },
         "btn6": {
             "value": 68,
-            "mode": "press"
+            "mode": "toggle"
         },
         "shutdown": {
             "value": 71,
