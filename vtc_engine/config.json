@@ -31,16 +31,16 @@
     },
     "media": {
         "home": {
-            "mode": "image_still",
+            "mode": "image_flash",
             "path": "demo3/1_visual.jpg"
         },
         "follow_me": {
-            "mode": "image_still",
+            "mode": "image_flash",
             "button" : "btn1",
             "path": "demo3/2_Traffic.jpg"
         },
         "stop": {
-            "mode": "image_still",
+            "mode": "image_flash",
             "button" : "btn2",
             "path": "demo3/3_Control.jpg"
         },
@@ -55,7 +55,7 @@
             "path": "demo3/5_vtc-1.jpg"
         },
         "keep_left": {
-            "mode": "image_flash",
+            "mode": "image_still",
             "button" : "btn5",
             "path": "demo3/6_Bahrain flag-1.jpg"
         },

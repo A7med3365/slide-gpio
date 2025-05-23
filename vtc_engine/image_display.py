@@ -1,8 +1,8 @@
 import pygame
 import time
 import queue
-from typing import Optional, Tuple, Dict, Any
-
+from typing import Optional, Tuple, Dict, Any, List # Added List
+  
 class ImageDisplay:
     def __init__(self, media_config: Dict[str, Dict[str, Any]], flash_duty_cycle: float, flash_duration: float):
         self._flash_duty_cycle = flash_duty_cycle
@@ -53,14 +53,19 @@ class ImageDisplay:
         self._current_image_path: Optional[str] = None
         self._display_mode: str = "still"  # "still" or "flash"
         self._flash_start_time: float = 0.0
-
+        
+        # Default on/off times for "image_flash" mode
         if self._flash_duration > 0:
             self._on_time: float = self._flash_duty_cycle * self._flash_duration
             self._off_time: float = self._flash_duration - self._on_time
         else: # Avoid division by zero if duration is zero
-            self._on_time: float = 0.0
+            self._on_time: float = 0.0 # Effectively always on if duration is 0
             self._off_time: float = 0.0
 
+        # Active on/off times for the currently displayed image
+        self._active_on_time: float = 0.0
+        self._active_off_time: float = 0.0
+  
     @property
     def is_running(self) -> bool:
         return self._is_running_loop
@@ -196,14 +201,27 @@ class ImageDisplay:
                         if path in self._preloaded_images:
                             self._current_image_surface, self._current_image_pos = self._preloaded_images[path]
                             self._current_image_path = path
-                            self._display_mode = mode
+                            self._display_mode = mode # Store original mode for context if needed
                             self._flash_start_time = time.time() # Reset flash timer
+
+                            if mode == "image_still":
+                                if self._flash_duration > 0:
+                                    self._active_on_time = self._flash_duration # 100% duty cycle
+                                    self._active_off_time = 0.0
+                                else: # If flash_duration is 0, treat as always on
+                                    self._active_on_time = 1.0 # Indicates always on for rendering logic
+                                    self._active_off_time = 0.0
+                            elif mode == "image_flash":
+                                # Use defaults calculated in __init__ based on config
+                                self._active_on_time = self._on_time
+                                self._active_off_time = self._off_time
+                            
                             self._current_text_surface = None # Clear any active text
                             self._current_text_pos = None
                             self._is_scrolling = False # Stop scrolling
                             self._scrolling_text_lines = None
                             self._current_scroll_surface = None
-                            print(f"[ImageDisplay] CMD: Set image to {path}, Mode: {mode}")
+                            print(f"[ImageDisplay] CMD: Set image to {path}, Mode: {mode} (Active ON: {self._active_on_time:.2f}, Flash Duration: {self._flash_duration:.2f})")
                         else:
                             print(f"[ImageDisplay] CMD Error: Image not pre-loaded: {path}")
                             self._current_image_surface = None
@@ -331,13 +349,19 @@ class ImageDisplay:
             elif self._current_text_surface and self._current_text_pos: # Static text
                 self.screen.blit(self._current_text_surface, self._current_text_pos)
             elif self._current_image_surface and self._current_image_pos: # Image display
-                if self._display_mode == "flash" and self._flash_duration > 0 and self._on_time > 0: # Ensure on_time is positive
-                    cycle_time = (time.time() - self._flash_start_time) % self._flash_duration
-                    is_on_phase = cycle_time < self._on_time
-                    if is_on_phase:
-                        self.screen.blit(self._current_image_surface, self._current_image_pos)
-                else:  # Still mode or flash duration/on_time is zero (effectively still)
+                # Unified flashing logic using _active_on_time and _flash_duration
+                if self._flash_duration <= 0: # Always ON if duration is not positive (e.g. image_still with duration 0)
                     self.screen.blit(self._current_image_surface, self._current_image_pos)
+                else: # Positive flash duration
+                    if self._active_on_time >= self._flash_duration: # 100% duty cycle (e.g. image_still with positive duration)
+                        self.screen.blit(self._current_image_surface, self._current_image_pos)
+                    elif self._active_on_time <= 0: # 0% duty cycle (always off, for image_flash with 0% duty)
+                        pass # Don't blit
+                    else: # Standard flashing for image_flash with duty < 100%
+                        cycle_time = (time.time() - self._flash_start_time) % self._flash_duration
+                        is_on_phase = cycle_time < self._active_on_time
+                        if is_on_phase:
+                            self.screen.blit(self._current_image_surface, self._current_image_pos)
             
             pygame.display.flip()
             pygame.time.wait(10) # Manage frame rate / yield CPU
