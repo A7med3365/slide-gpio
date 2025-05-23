@@ -13,9 +13,11 @@ class USBHandler:
     MOUNT_PATH = "/usr/bin/mount"
     UMOUNT_PATH = "/usr/bin/umount"
     DEFAULT_MOUNT_BASE = "/mnt/atc_usb_update" # Changed to avoid conflict with generic /mnt/usb
+    DEFAULT_PACKAGE_NAME = "atc_update_package"
 
-    def __init__(self, mount_point_base: str = DEFAULT_MOUNT_BASE):
+    def __init__(self, mount_point_base: str = DEFAULT_MOUNT_BASE, package_name: str = DEFAULT_PACKAGE_NAME):
         self.mount_point_base = mount_point_base
+        self.package_name = package_name
         # Ensure the base mount directory exists
         if not os.path.exists(self.mount_point_base):
             try:
@@ -179,11 +181,11 @@ class USBHandler:
             # print(f"Mount point {mount_point} is not a valid directory.")
             return None
 
-        package_dir_name = "atc_update_package"
+        # Use the instance's package_name
         expected_config_file = "config.json"
         expected_assets_dir = "assets"
 
-        package_path = os.path.join(mount_point, package_dir_name)
+        package_path = os.path.join(mount_point, self.package_name)
         config_file_path = os.path.join(package_path, expected_config_file)
         assets_dir_path = os.path.join(package_path, expected_assets_dir)
 

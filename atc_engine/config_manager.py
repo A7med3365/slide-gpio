@@ -128,7 +128,7 @@ class ConfigManager:
                 })
         return combined
 
-def get_config_path(self) -> str:
+    def get_config_path(self) -> str:
         """Returns the path to the configuration file."""
         return self._config_path
 if __name__ == '__main__':

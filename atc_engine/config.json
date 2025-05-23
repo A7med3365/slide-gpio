@@ -32,48 +32,32 @@
     "media": {
         "home": {
             "mode": "image_still",
-            "path": "atc_engine/image_sets/set0/photo-1481349518771-20055b2a7b24.jpg"
+            "path": "demo3/1_visual.jpg"
         },
         "follow_me": {
             "mode": "image_still",
             "button" : "btn1",
-            "path": "atc_engine/image_sets/set0/photo-1494253109108-2e30c049369b.jpg"
+            "path": "demo3/2_Traffic.jpg"
         },
         "stop": {
             "mode": "image_still",
             "button" : "btn2",
-            "path": "atc_engine/image_sets/set1/photo-1504309092620-4d0ec726efa4.jpg"
+            "path": "demo3/3_Control.jpg"
         },
         "keep_distance": {
             "mode": "image_flash",
             "button" : "btn3",
-            "path": "atc_engine/image_sets/set1/photo-1613336026275-d6d473084e85.jpg"
+            "path": "demo3/4_System.jpg"
         },
         "keep_right": {
             "mode": "image_flash",
             "button" : "btn4",
-            "path": "atc_engine/image_sets/set2/photo-1505740420928-5e560c06d30e.jpg"
+            "path": "demo3/5_vtc-1.jpg"
         },
         "keep_left": {
             "mode": "image_flash",
             "button" : "btn5",
-            "path": "atc_engine/image_sets/set2/premium_photo-1661629473263-572a.jpg"
-        },
-        "slide": {
-            "mode": "slide",
-            "button" : "btn6",
-            "path": "demo1/"
-        },
-        "thank_you": {
-            "mode": "image_still",
-            "button" : ["btn5", "btn6"],
-            "path": "demo1/7_Thank You.gif"
-        },
-        "warning_flash": {
-            "mode": "image_flash",
-            "button": ["btn1", "btn6"],
-            "path": "demo/STOP.gif",
-            "hold_time": 0.5
+            "path": "demo3/6_Bahrain flag-1.jpg"
         },
         "scroll_text": {
             "mode": "scroll_text",
