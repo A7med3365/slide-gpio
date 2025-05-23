@@ -10,7 +10,6 @@ try:
     from pyA64.gpio import gpio
 except ImportError:
     print("[GPIO] Warning: pyA64.gpio module not found. Running in simulation mode.")
-    # Create mock gpio module for testing
     class MockGPIO:
         INPUT = 1
         PULLUP = 1
@@ -30,12 +29,10 @@ class GPIOMonitor(threading.Thread):
         self._shutdown_event = threading.Event()
         self._lock = threading.Lock()
         self._action_handler = action_handler
-        self._config_manager = config_manager # Store ConfigManager instance
-        # self._config: Dict[str, Any] = {} # Remove
-        # self._load_config(config_path) # Remove
+        self._config_manager = config_manager
 
         settings = self._config_manager.get_settings()
-        self._debounce_time = float(settings.get('debounce_time', 0.3))
+        # self._debounce_time = float(settings.get('debounce_time', 0.3)) # Kept for reference if push buttons are used again
         self._poll_interval = float(settings.get('poll_interval', 0.05))
         self._default_hold_time = float(settings.get('default_combo_hold_time', 1.0))
         
@@ -47,43 +44,27 @@ class GPIOMonitor(threading.Thread):
 
         self._button_states: Dict[int, ButtonState] = {}
         self._pin_to_button_name: Dict[int, str] = {}
-        for btn_name, button_details in self._config_manager.get_buttons_config().items(): # Use ConfigManager
+        self._button_modes: Dict[str, str] = {} # Store button modes (press/toggle)
+
+        for btn_name, button_details in self._config_manager.get_buttons_config().items():
             pin_value = int(button_details['value'])
             self._button_states[pin_value] = ButtonState()
             self._pin_to_button_name[pin_value] = btn_name
+            self._button_modes[btn_name] = button_details.get('mode', 'press') # Default to 'press' if not specified
         
-        # Track combination states
-        self._active_combination_info: Optional[Dict[str, Any]] = None # Stores name, mode, path of active combo
+        self._active_combination_info: Optional[Dict[str, Any]] = None
         self._combination_start_time: float = 0.0
-        self._held_buttons_for_combo: Set[str] = set() # Stores button names for current potential combo
+        self._held_buttons_for_combo: Set[str] = set()
         
-        self._combined_actions = self._config_manager.get_combined_actions() # Get from ConfigManager
+        self._combined_actions = self._config_manager.get_combined_actions()
         
         print(f"[GPIO] Monitor initialized. Buttons: {len(self._button_states)}, Combined Actions: {len(self._combined_actions)}")
-
-    # def _load_config(self, config_path: str) -> None: # Removed
-    #     """Load and validate configuration from JSON file."""
-    #     try:
-    #         with open(config_path, 'r') as f:
-    #             self._config = json.load(f) # Store entire config
-            
-    #         # Extract settings with defaults
-    #         settings = self._config.get('settings', {})
-    #         self._debounce_time: float = float(settings.get('debounce_time', 0.3))
-    #         self._poll_interval: float = float(settings.get('poll_interval', 0.05))
-    #         # self._default_hold_time is now set in __init__
-            
-    #         print(f"[GPIO] Loaded configuration from {config_path}")
-    #     except Exception as e:
-    #         print(f"[GPIO] Error loading configuration from {config_path}: {e}")
-    #         raise
 
     def _init_gpio(self) -> bool:
         """Initialize GPIO hardware."""
         try:
             gpio.init()
-            # for button_details in self._config.get('buttons', {}).values(): # Old
-            for button_details in self._config_manager.get_buttons_config().values(): # New
+            for button_details in self._config_manager.get_buttons_config().values():
                 pin = int(button_details['value'])
                 gpio.setcfg(pin, gpio.INPUT)
                 gpio.pullup(pin, gpio.PULLUP)
@@ -93,204 +74,254 @@ class GPIOMonitor(threading.Thread):
             print(f"[GPIO] Error initializing GPIO: {e}")
             return False
 
-    def _check_combinations(self, current_pressed_pins: Set[int], current_time: float) -> Optional[Dict[str, Any]]:
-        """Check for active button combinations based on button names and hold time."""
-        if not current_pressed_pins:
+    def _check_combinations(self, current_pressed_button_names: Set[str], current_time: float) -> Optional[Dict[str, Any]]:
+        """Check for active button combinations based on currently ON toggle button names and hold time."""
+        # This function largely remains the same, but current_pressed_button_names is now derived from latched toggle states
+        if not current_pressed_button_names:
             self._held_buttons_for_combo.clear()
             self._combination_start_time = 0.0
-            self._active_combination_info = None
+            # Do not clear _active_combination_info here, allow it to be cleared if the combo is no longer met
             return None
-
-        current_pressed_button_names = {self._pin_to_button_name[pin] for pin in current_pressed_pins if pin in self._pin_to_button_name}
 
         for item in self._combined_actions:
             item_button_config = item['details'].get('button')
-            if not item_button_config: # Skip if no button defined for this action/media
+            if not item_button_config:
                 continue
 
-            # Normalize item_button_config to a set of button names
             required_button_names: Set[str]
             if isinstance(item_button_config, str):
                 required_button_names = {item_button_config}
             elif isinstance(item_button_config, list):
                 required_button_names = set(item_button_config)
             else:
-                continue # Invalid button config for this item
+                continue
 
-            # Only consider items that are combinations (more than one button)
-            if len(required_button_names) <= 1:
+            if len(required_button_names) <= 1: # Only consider combinations
                 continue
 
             if current_pressed_button_names == required_button_names:
                 if self._held_buttons_for_combo != required_button_names:
                     self._held_buttons_for_combo = required_button_names.copy()
                     self._combination_start_time = current_time
-                    # print(f"[GPIO] Potential combination for '{item['name']}' detected, holding...")
-                    return None # Indicate potential combo, but not yet active
+                    return None 
 
                 hold_time = float(item['details'].get('hold_time', self._default_hold_time))
                 if current_time - self._combination_start_time >= hold_time:
-                    # Activate only once per hold by checking against _active_combination_info
-                    # To prevent re-triggering, we compare the 'name' of the item.
                     if not self._active_combination_info or self._active_combination_info['name'] != item['name']:
                         print(f"[GPIO] Combination '{item['name']}' activated after {hold_time:.1f}s hold.")
                         return {
                             'name': item['name'],
                             'mode': item['details']['mode'],
-                            'path': item['details'].get('path')
+                            'path': item['details'].get('path'),
+                            '_buttons_internal': required_button_names.copy() # Store buttons for this combo
                         }
-                return None # Still holding, or already activated this hold period for this specific combo name
+                return None 
         
-        # If no current combination matches, or current_pressed_button_names doesn't match any combo_set
         self._held_buttons_for_combo.clear()
         self._combination_start_time = 0.0
-        # self._active_combination_info = None # Reset only if no combo is pressed or matched
         return None
 
     def _handle_button_states(self) -> None:
-        """Process current button states and detect single or combination actions."""
+        """Process current button states and detect single or combination actions for toggle buttons."""
         current_time = time.monotonic()
-        currently_pressed_pins: Set[int] = set()
-        newly_pressed_pins: Set[int] = set()
+        
+        pins_toggled_on_this_cycle: Set[int] = set()
+        pins_toggled_off_this_cycle: Set[int] = set()
+        currently_pressed_pins: Set[int] = set() # Pins of toggle buttons currently latched ON
 
         for pin, state in self._button_states.items():
+            button_name = self._pin_to_button_name.get(pin)
+            button_mode = self._button_modes.get(button_name, 'press')
+
             try:
-                # Assuming gpio.input(pin) returns 0 for pressed (LOW) and 1 for not pressed (HIGH due to PULLUP)
-                current_pin_state = gpio.input(pin)
-                
-                if state.last_state != current_pin_state: # State changed
-                    if current_pin_state == 0: # Pin pressed (transitioned to LOW)
-                        if current_time - state.last_press_time > self._debounce_time:
+                current_pin_state = gpio.input(pin) # 0 for pressed/ON, 1 for not pressed/OFF
+
+                if button_mode == 'toggle':
+                    if state.last_state != current_pin_state: # Toggle switch was flipped
+                        if current_pin_state == 0: # Switched to ON
+                            print(f"[GPIO] Toggle Pin {pin} ({button_name}) toggled ON")
+                            if not state.is_pressed: # Was previously OFF
+                                pins_toggled_on_this_cycle.add(pin)
                             state.is_pressed = True
-                            state.last_press_time = current_time
-                            state.was_in_combo = False # Reset combo flag on new press
-                            print(f"[GPIO] Pin {pin} ({self._pin_to_button_name.get(pin, 'Unknown')}) pressed")
-                            newly_pressed_pins.add(pin)
-                    else: # Pin released (transitioned to HIGH)
-                        state.is_pressed = False
-                        # If a button is released, and it was part of _held_buttons_for_combo, it might break a combo.
-                        # _check_combinations will handle this by not finding a match.
-                        # Also, if an active combo was triggered by this button, releasing it should clear _active_combination_info
-                        button_name_released = self._pin_to_button_name.get(pin)
-                        if self._active_combination_info and button_name_released and \
-                           (isinstance(self._active_combination_info.get('_buttons_internal', set()), set) and \
-                            button_name_released in self._active_combination_info['_buttons_internal']):
-                            print(f"[GPIO] Button {button_name_released} from active combo '{self._active_combination_info['name']}' released. Clearing active combo.")
-                            self._active_combination_info = None # Clear active combo if one of its buttons is released
-                
-                state.last_state = current_pin_state
-                
-                if current_pin_state == 0: # Pin is currently pressed
-                    currently_pressed_pins.add(pin)
-                
+                        else: # Switched to OFF (current_pin_state == 1)
+                            print(f"[GPIO] Toggle Pin {pin} ({button_name}) toggled OFF")
+                            if state.is_pressed: # Was previously ON
+                                pins_toggled_off_this_cycle.add(pin)
+                            state.is_pressed = False
+                        state.was_in_combo = False # Reset combo status on any toggle change
+                    
+                    if state.is_pressed:
+                        currently_pressed_pins.add(pin)
+                    state.last_state = current_pin_state
+
+                # else: # Original push-button logic (kept for reference)
+                #     # if state.last_state != current_pin_state: # State changed
+                #     #     if current_pin_state == 0: # Pin pressed (transitioned to LOW)
+                #     #         # Debounce for push buttons
+                #     #         if current_time - state.last_press_time > self._debounce_time:
+                #     #             state.is_pressed = True
+                #     #             state.last_press_time = current_time
+                #     #             state.was_in_combo = False # Reset combo flag on new press
+                #     #             print(f"[GPIO] Pin {pin} ({button_name}) pressed")
+                #     #             # For push buttons, newly_pressed_pins would be used here
+                #     # else: # Pin released (transitioned to HIGH)
+                #     #     state.is_pressed = False
+                #     # state.last_state = current_pin_state
+                #     # if current_pin_state == 0: # Pin is currently pressed (for push buttons)
+                #     # currently_pressed_pins.add(pin) # This would be for push buttons
+                pass # End of per-button processing
+
             except Exception as e:
                 print(f"[GPIO] Error reading pin {pin}: {e}")
 
-        # Check for combinations first
-        combo_action_details = self._check_combinations(currently_pressed_pins, current_time)
+        current_pressed_button_names = {self._pin_to_button_name[pin] for pin in currently_pressed_pins if pin in self._pin_to_button_name}
         
-        if combo_action_details:
-            # Mark all buttons involved in the activated combo as 'was_in_combo'
-            # The 'button' field in item['details'] can be a string or list of button names
-            combo_buttons_config = None
-            for item in self._combined_actions: # Find the original item to get its button config
-                if item['name'] == combo_action_details['name']:
-                    combo_buttons_config = item['details'].get('button')
-                    break
-            
-            if combo_buttons_config:
-                involved_button_names = set()
-                if isinstance(combo_buttons_config, str):
-                    involved_button_names = {combo_buttons_config}
-                elif isinstance(combo_buttons_config, list):
-                    involved_button_names = set(combo_buttons_config)
-
-                for pin, btn_name in self._pin_to_button_name.items():
-                    if btn_name in involved_button_names and pin in self._button_states:
-                        self._button_states[pin].was_in_combo = True
-            
-            print(f"[GPIO] Executing combination action: Name='{combo_action_details['name']}', Mode='{combo_action_details['mode']}', Path='{combo_action_details.get('path')}'")
+        # 1. Check for Combinations
+        combo_action_details = self._check_combinations(current_pressed_button_names, current_time)
+        
+        # If a new combination has just activated
+        if combo_action_details and (not self._active_combination_info or self._active_combination_info['name'] != combo_action_details['name']):
+            print(f"[GPIO] Executing NEW combination action: Name='{combo_action_details['name']}'")
             self._action_handler.execute_action(
                 name=combo_action_details['name'],
                 mode=combo_action_details['mode'],
                 path=combo_action_details.get('path')
             )
-            self._active_combination_info = combo_action_details # Store the activated combination details
-            # Add involved button names to _active_combination_info for release check
-            self._active_combination_info['_buttons_internal'] = involved_button_names if combo_buttons_config else set()
+            self._active_combination_info = combo_action_details
+            # Mark involved buttons as being part of this active combo
+            for pin_in_combo_name in combo_action_details.get('_buttons_internal', set()):
+                for pin_val, btn_name_lookup in self._pin_to_button_name.items():
+                    if btn_name_lookup == pin_in_combo_name:
+                        if pin_val in self._button_states:
+                            self._button_states[pin_val].was_in_combo = True
+            return # Prioritize combo activation
 
-            newly_pressed_pins.clear() # Prevent single action if part of combo
+        # If an existing combination is no longer met
+        if self._active_combination_info and not combo_action_details:
+            # Check if the specific buttons for the active combo are still pressed
+            active_combo_buttons = self._active_combination_info.get('_buttons_internal', set())
+            if not active_combo_buttons.issubset(current_pressed_button_names):
+                print(f"[GPIO] Active combination '{self._active_combination_info['name']}' NO LONGER MET. Reverting to default.")
+                self._active_combination_info = None
+                if self._default_media_name:
+                    default_media_details = self._config_manager.get_media_config().get(self._default_media_name)
+                    if default_media_details:
+                        self._action_handler.execute_action(
+                            name=self._default_media_name,
+                            mode=default_media_details['mode'],
+                            path=default_media_details.get('path')
+                        )
+                    else: self._action_handler.stop_current() # Fallback
+                else: self._action_handler.stop_current() # Fallback
+                return # Combo state changed, re-evaluate next cycle
+
+        # 2. Handle Single Button Toggles (if no combo was just activated or deactivated)
+        # Handle toggling ON
+        for pin_on in pins_toggled_on_this_cycle:
+            button_on_name = self._pin_to_button_name.get(pin_on)
+            if not button_on_name or self._button_modes.get(button_on_name) != 'toggle':
+                continue
+
+            # Ensure this button is not part of an ALREADY active combination
+            if self._active_combination_info and button_on_name in self._active_combination_info.get('_buttons_internal', set()):
+                continue # Part of an active combo, don't trigger single action
+
+            # Check if this ON toggle should trigger a single action
+            # A single action is triggered if this is the only button ON, or if it's configured for single action
+            # and not overridden by a current combination.
             
-        elif not currently_pressed_pins: # No buttons are pressed, reset active combination info
-             self._active_combination_info = None
-
-        # Handle single button presses only if no combination was activated in this cycle
-        if not combo_action_details and newly_pressed_pins:
-            for pressed_pin in list(newly_pressed_pins): # Iterate over a copy
-                state = self._button_states.get(pressed_pin)
-                button_name = self._pin_to_button_name.get(pressed_pin)
-                
-                # Ensure it's a single button press, not part of a forming or just-fired combo,
-                # and only one button is currently physically pressed.
-                if state and not state.was_in_combo and button_name and len(currently_pressed_pins) == 1 and pressed_pin in currently_pressed_pins:
-                    # Find the action for this single button
-                    action_item_name_to_trigger: Optional[str] = None
-                    action_item_details_to_trigger: Optional[Dict[str, Any]] = None
-
-                    for item in self._combined_actions:
-                        item_button_config = item['details'].get('button')
-                        # Ensure it's a single button action definition
-                        if isinstance(item_button_config, str) and item_button_config == button_name:
-                            # Check if it's not actually a multi-button item misconfigured as string
-                            # (though config validation should ideally catch this)
-                            if isinstance(item['details'].get('button'), list) and len(item['details']['button']) > 1:
-                                continue # Skip this item, it's for a combo
-
-                            action_item_name_to_trigger = item['name']
-                            action_item_details_to_trigger = item['details']
-                            break # Found the corresponding action for the single button press
+            # Find the action for this single button
+            action_to_trigger: Optional[Dict[str, Any]] = None
+            for item in self._combined_actions:
+                item_button_config = item['details'].get('button')
+                if isinstance(item_button_config, str) and item_button_config == button_on_name:
+                    # Ensure it's truly a single button action (not a misconfigured combo)
+                    is_single_def = True
+                    if isinstance(self._config_manager.get_media_config().get(item['name'], {}).get('button'), list) or \
+                       isinstance(self._config_manager.get_actions_config().get(item['name'], {}).get('button'), list):
+                        if len(item_button_config) > 1: is_single_def = False
                     
-                    if action_item_name_to_trigger and action_item_details_to_trigger:
-                        current_active_action_name = self._action_handler.current_action_name
-                        
-                        # New Logic: Check if this button press corresponds to the currently active media item
-                        if action_item_name_to_trigger == current_active_action_name:
-                            print(f"[GPIO] Single press on active action button '{button_name}' ({action_item_name_to_trigger}).")
-                            if self._default_media_name:
-                                default_media_details = self._config_manager.get_media_config().get(self._default_media_name) # New
-                                if default_media_details:
-                                    print(f"[GPIO] Re-press of active action '{action_item_name_to_trigger}'. Returning to home: '{self._default_media_name}'")
-                                    self._action_handler.execute_action(
-                                        name=self._default_media_name,
-                                        mode=default_media_details['mode'],
-                                        path=default_media_details.get('path')
-                                    )
-                                else:
-                                    print(f"[GPIO] Default media '{self._default_media_name}' not found in config. Stopping current action.")
-                                    self._action_handler.stop_current()
-                            else:
-                                print("[GPIO] No default_media_name defined. Stopping current action.")
-                                self._action_handler.stop_current()
-                            # Mark as handled for this press cycle
-                            # state.was_in_combo = True # Or a new flag
-                            break # Processed this pin, move to next _handle_button_states cycle
-                        else:
-                            # Original behavior: trigger the action associated with this single button
-                            print(f"[GPIO] Executing single action: Name='{action_item_name_to_trigger}', Mode='{action_item_details_to_trigger['mode']}', Path='{action_item_details_to_trigger.get('path')}'")
+                    if is_single_def:
+                        action_to_trigger = item
+                        break
+            
+            if action_to_trigger:
+                # If another single action is active by a different button, stop it.
+                # If a combo is active, this path shouldn't be hit due to earlier return/checks.
+                current_ah_action_name = self._action_handler.current_action_name
+                if current_ah_action_name and current_ah_action_name != action_to_trigger['name'] and not self._active_combination_info:
+                     print(f"[GPIO] Different single action '{current_ah_action_name}' was active. Stopping it.")
+                     # Reverting to default implicitly stops the old one if it's not the default.
+                     # Or, explicitly stop then execute. For now, execute_action handles stopping previous.
+
+                print(f"[GPIO] Executing single toggle-ON action: Name='{action_to_trigger['name']}'")
+                self._action_handler.execute_action(
+                    name=action_to_trigger['name'],
+                    mode=action_to_trigger['details']['mode'],
+                    path=action_to_trigger['details'].get('path')
+                )
+                # Clear active combo if a single action overrides
+                if self._active_combination_info and action_to_trigger['name'] != self._active_combination_info['name']:
+                    self._active_combination_info = None
+                return # Processed one toggle ON event
+
+        # Handle toggling OFF
+        for pin_off in pins_toggled_off_this_cycle:
+            button_off_name = self._pin_to_button_name.get(pin_off)
+            if not button_off_name or self._button_modes.get(button_off_name) != 'toggle':
+                continue
+
+            # If the button toggled OFF was the one sustaining the current single action
+            current_ah_action_name = self._action_handler.current_action_name
+            if current_ah_action_name == button_off_name and not self._active_combination_info : # And no combo is active
+                # Check if this action was indeed a single button action associated with button_off_name
+                is_single_action_match = False
+                for item in self._combined_actions:
+                    if item['name'] == current_ah_action_name and item['details'].get('button') == button_off_name:
+                        is_single_action_match = True
+                        break
+                
+                if is_single_action_match:
+                    print(f"[GPIO] Single action button '{button_off_name}' toggled OFF. Reverting to default.")
+                    if self._default_media_name:
+                        default_media_details = self._config_manager.get_media_config().get(self._default_media_name)
+                        if default_media_details:
                             self._action_handler.execute_action(
-                                name=action_item_name_to_trigger,
-                                mode=action_item_details_to_trigger['mode'],
-                                path=action_item_details_to_trigger.get('path')
+                                name=self._default_media_name,
+                                mode=default_media_details['mode'],
+                                path=default_media_details.get('path')
                             )
-                            # Mark as handled for this press cycle
-                            # state.was_in_combo = True # Or a new flag
-                            break # Found and executed action for this single button
+                        else: self._action_handler.stop_current() # Fallback
+                    else: self._action_handler.stop_current() # Fallback
+                    return # Processed one toggle OFF event
+
+        # If no buttons are ON, and an action (single or combo) was active, revert to default.
+        if not currently_pressed_pins:
+            action_was_active = self._action_handler.current_action_name and self._action_handler.current_action_name != self._default_media_name
+            combo_was_active = self._active_combination_info is not None
+
+            if action_was_active or combo_was_active:
+                print("[GPIO] All toggle buttons are OFF. Reverting to default media.")
+                self._active_combination_info = None # Clear any active combo
+                if self._default_media_name:
+                    default_media_details = self._config_manager.get_media_config().get(self._default_media_name)
+                    if default_media_details:
+                        # Check if default is already active to prevent loop
+                        if self._action_handler.current_action_name != self._default_media_name:
+                            self._action_handler.execute_action(
+                                name=self._default_media_name,
+                                mode=default_media_details['mode'],
+                                path=default_media_details.get('path')
+                            )
+                    else: self._action_handler.stop_current() # Fallback
+                else: self._action_handler.stop_current() # Fallback
+
 
     def stop(self) -> None:
         """Signal the thread to stop and cleanup resources."""
         print("[GPIO] Stop requested")
         self._shutdown_event.set()
-        self._action_handler.stop_current() # Ensure action handler also stops
+        # self._action_handler.stop_current() # stop_current is called by App.stop
 
     def run(self):
         """Main thread loop."""
@@ -301,9 +332,8 @@ class GPIOMonitor(threading.Thread):
             return
 
         while not self._shutdown_event.is_set():
-            with self._lock: # Ensure thread-safe access to shared state
+            with self._lock: 
                 self._handle_button_states()
-            # Use wait with timeout for polling interval
             self._shutdown_event.wait(timeout=self._poll_interval)
 
         print("[GPIO] Thread finished")
