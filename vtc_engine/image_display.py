@@ -356,12 +356,12 @@ if __name__ == '__main__':
     # Example media_config for testing
     test_media_config = {
         "image1": {
-            "path": "../atc_engine/image_sets/set0/photo-1481349518771-20055b2a7b24.jpg",
+            "path": "../vtc_engine/image_sets/set0/photo-1481349518771-20055b2a7b24.jpg",
             "mode": "image_still",
             "duration": 5
         },
         "image2": {
-            "path": "../atc_engine/image_sets/set1/photo-1504309092620-4d0ec726efa4.jpg",
+            "path": "../vtc_engine/image_sets/set1/photo-1504309092620-4d0ec726efa4.jpg",
             "mode": "image_flash",
             "duration": 10
         },
@@ -390,8 +390,8 @@ if __name__ == '__main__':
     # Start a separate thread to send commands, as image_display.run() will block.
     def command_sender(display_controller):
         try:
-            image_path1 = "../atc_engine/image_sets/set0/photo-1481349518771-20055b2a7b24.jpg"
-            image_path2 = "../atc_engine/image_sets/set1/photo-1504309092620-4d0ec726efa4.jpg"
+            image_path1 = "../vtc_engine/image_sets/set0/photo-1481349518771-20055b2a7b24.jpg"
+            image_path2 = "../vtc_engine/image_sets/set1/photo-1504309092620-4d0ec726efa4.jpg"
             import os
 
             print("Sending: Display image 1 (still) for 5 seconds...")

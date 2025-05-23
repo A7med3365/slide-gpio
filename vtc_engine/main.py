@@ -5,7 +5,7 @@ Initializes and runs the VTC application.
 """
 
 import os
-from atc_engine.app import Application
+from vtc_engine.app import Application
 
 if __name__ == "__main__":
     config_path = os.path.join(os.path.dirname(__file__), "config.json")

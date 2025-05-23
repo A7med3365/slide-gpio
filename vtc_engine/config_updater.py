@@ -32,16 +32,16 @@ class ConfigUpdater:
         self._app_ref = app_ref # Changed from action_handler_ref
         self._current_config_file_path = os.path.abspath(app_config_path)
         # Determine app_root_dir: parent of the directory containing config.json
-        # e.g., if app_config_path is /path/to/project_root/atc_engine/config.json
-        # then config_dir is /path/to/project_root/atc_engine
+        # e.g., if app_config_path is /path/to/project_root/vtc_engine/config.json
+        # then config_dir is /path/to/project_root/vtc_engine
         # and app_root_dir is /path/to/project_root
         config_dir = os.path.dirname(self._current_config_file_path)
-        self._app_root_dir = os.path.dirname(config_dir) # This assumes config.json is one level down from project root in a dir like 'atc_engine'
+        self._app_root_dir = os.path.dirname(config_dir) # This assumes config.json is one level down from project root in a dir like 'vtc_engine'
 
         # Determine assets_dir_name and current_assets_base_dir
-        # Assets are in 'atc_engine/image_sets/' relative to project root.
+        # Assets are in 'vtc_engine/image_sets/' relative to project root.
         # self._app_root_dir is project_root
-        self._assets_dir_name = os.path.join(os.path.basename(config_dir), "image_sets") # e.g., "atc_engine/image_sets"
+        self._assets_dir_name = os.path.join(os.path.basename(config_dir), "image_sets") # e.g., "vtc_engine/image_sets"
         self._current_assets_base_dir = os.path.join(self._app_root_dir, self._assets_dir_name)
 
         self.usb_handler = USBHandler(package_name=self._USB_PACKAGE_DIR_NAME)
@@ -150,7 +150,7 @@ class ConfigUpdater:
         staging_config_file_temp = staging_config_file + ".tmp" # Work with a temp file first
 
         # Staging assets dir will mirror the structure of current assets dir relative to app root
-        # e.g., if _assets_dir_name is "atc_engine/image_sets", staging_assets_dir will be ".update_staging/atc_engine/image_sets"
+        # e.g., if _assets_dir_name is "vtc_engine/image_sets", staging_assets_dir will be ".update_staging/vtc_engine/image_sets"
         staging_assets_dir = os.path.join(staging_dir, self._assets_dir_name)
 
         backup_dir = os.path.join(self._app_root_dir, self._BACKUP_DIR_NAME)
@@ -219,7 +219,7 @@ class ConfigUpdater:
             with open(staging_config_file_temp, 'r') as f:
                 staged_config_data = json.load(f)
             
-            # The new prefix for assets will be self._assets_dir_name (e.g., "atc_engine/image_sets")
+            # The new prefix for assets will be self._assets_dir_name (e.g., "vtc_engine/image_sets")
             rewritten_staged_config_data = self._rewrite_config_paths(staged_config_data, self._assets_dir_name)
             
             with open(staging_config_file_temp, 'w') as f:
@@ -411,9 +411,9 @@ if __name__ == '__main__':
     
     # Create a dummy project structure for testing
     test_project_root = "temp_test_project_root"
-    test_atc_engine_dir = os.path.join(test_project_root, "atc_engine")
-    test_app_config_path = os.path.join(test_atc_engine_dir, "config.json")
-    test_assets_dir = os.path.join(test_atc_engine_dir, "image_sets")
+    test_vtc_engine_dir = os.path.join(test_project_root, "vtc_engine")
+    test_app_config_path = os.path.join(test_vtc_engine_dir, "config.json")
+    test_assets_dir = os.path.join(test_vtc_engine_dir, "image_sets")
     
     # Dummy current config.json
     dummy_current_config_content = {
@@ -421,7 +421,7 @@ if __name__ == '__main__':
             {
                 "name": "Screen 1",
                 "media": [
-                    {"type": "image", "path": "atc_engine/image_sets/set_current/current_img.jpg", "duration": 5}
+                    {"type": "image", "path": "vtc_engine/image_sets/set_current/current_img.jpg", "duration": 5}
                 ]
             }
         ]
@@ -452,7 +452,7 @@ if __name__ == '__main__':
         if os.path.exists(test_project_root): shutil.rmtree(test_project_root)
         if os.path.exists(dummy_usb_mount_point): shutil.rmtree(dummy_usb_mount_point)
 
-        os.makedirs(test_atc_engine_dir, exist_ok=True)
+        os.makedirs(test_vtc_engine_dir, exist_ok=True)
         os.makedirs(test_assets_dir, exist_ok=True)
         os.makedirs(os.path.join(test_assets_dir, "set_current"), exist_ok=True) # for current_img.jpg
         
