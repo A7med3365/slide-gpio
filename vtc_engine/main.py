@@ -1,7 +1,7 @@
 """
-ATC Engine - Main Module
+VTC Engine - Main Module
 ------------------------
-Initializes and runs the ATC application.
+Initializes and runs the VTC application.
 """
 
 import os
