@@ -64,10 +64,12 @@ class ActionHandler:
                 self._image_display_service.stop_display() # This queues the 'stop' command
                 self._image_display_service = None # Clear the reference
     
-    def execute_action(self, name: str, mode: str, path: Optional[str] = None) -> None:
+    def execute_action(self, name: str, mode: str, path: Optional[str] = None, action_params: Optional[Dict[str, Any]] = None) -> None:
         """Executes the specified action."""
         with self._lock:
             # Stop current action if one is active and different from the new one
+            # For hdmi_control, we might not want to stop if only params change, but name and mode are the same.
+            # However, hdmi_control is stateless in terms of 'path', so existing logic might be fine.
             if self._current_action_details and self._current_action_details.get('name') != name:
                 print(f"[ActionHandler] Stopping: {self._current_action_details['name']} (Mode: {self._current_action_details['mode']}) due to new action '{name}'.")
                 temp_details_to_stop = self._current_action_details.copy()
@@ -76,14 +78,16 @@ class ActionHandler:
             elif self._current_action_details and \
                  self._current_action_details.get('name') == name and \
                  self._current_action_details.get('mode') == mode and \
-                 self._current_action_details.get('path') == path:
-                print(f"[ActionHandler] Action {name} (Mode: {mode}, Path: {str(path)}) is already active. Re-applying.")
-                # Action is identical, effects will be re-applied by subsequent logic.
+                 self._current_action_details.get('path') == path and \
+                 self._current_action_details.get('action_params') == action_params: # Consider params for re-application
+                print(f"[ActionHandler] Action {name} (Mode: {mode}, Path: {str(path)}, Params: {action_params}) is already active. No change.")
+                return # If identical including params, do nothing further.
             
             # Set new action details (or update if re-triggering)
-            self._current_action_details = {'name': name, 'mode': mode, 'path': path}
+            self._current_action_details = {'name': name, 'mode': mode, 'path': path, 'action_params': action_params}
             path_str = str(path) if path else "N/A"
-            print(f"[ActionHandler] Starting/Updating action: {name} (Mode: {mode}, Path: {path_str})")
+            params_str = str(action_params) if action_params else "N/A"
+            print(f"[ActionHandler] Starting/Updating action: {name} (Mode: {mode}, Path: {path_str}, Params: {params_str})")
 
             if mode == "image_still" or mode == "image_flash":
                 if self._image_display_service:
@@ -100,9 +104,21 @@ class ActionHandler:
             
             elif mode == "hdmi_control":
                 if self._hdmi_controller:
-                    self._hdmi_controller.toggle_hdmi()
-                    display_text = self._hdmi_controller.get_hdmi_status_message() # Get status after toggle
-                    print(f"[ActionHandler] HDMI Toggled. Status: {display_text}")
+                    target_state = action_params.get('target_state') if action_params else None
+                    if target_state == 'on':
+                        self._hdmi_controller.turn_on_hdmi()
+                    elif target_state == 'off':
+                        self._hdmi_controller.turn_off_hdmi()
+                    else:
+                        # Fallback or error if target_state is not 'on' or 'off'
+                        # For now, let's assume GPIO monitor sends correct state or we default to toggle.
+                        # Given the new requirement, we should rely on target_state.
+                        # If no target_state, perhaps log an error or do nothing.
+                        print(f"[ActionHandler] HDMI control action for '{name}' called without specific target_state. Current state: {self._hdmi_controller.get_hdmi_status_message()}. No change made without explicit target.")
+                        # self._hdmi_controller.toggle_hdmi() # Original toggle behavior if no target_state
+                    
+                    display_text = self._hdmi_controller.get_hdmi_status_message() # Get status after action
+                    print(f"[ActionHandler] HDMI action executed. Target: {target_state}. Status: {display_text}")
                     if self._image_display_service:
                         self._image_display_service.display_text(text=display_text)
                 else:

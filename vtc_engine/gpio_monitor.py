@@ -173,7 +173,8 @@ class GPIOMonitor(threading.Thread):
             self._action_handler.execute_action(
                 name=combo_action_details['name'],
                 mode=combo_action_details['mode'],
-                path=combo_action_details.get('path')
+                path=combo_action_details.get('path'),
+                action_params=None # Combos typically don't have specific action_params like hdmi target_state
             )
             self._active_combination_info = combo_action_details
             # Mark involved buttons as being part of this active combo
@@ -197,7 +198,8 @@ class GPIOMonitor(threading.Thread):
                         self._action_handler.execute_action(
                             name=self._default_media_name,
                             mode=default_media_details['mode'],
-                            path=default_media_details.get('path')
+                            path=default_media_details.get('path'),
+                            action_params=None
                         )
                     else: self._action_handler.stop_current() # Fallback
                 else: self._action_handler.stop_current() # Fallback
@@ -241,12 +243,18 @@ class GPIOMonitor(threading.Thread):
                      print(f"[GPIO] Different single action '{current_ah_action_name}' was active. Stopping it.")
                      # Reverting to default implicitly stops the old one if it's not the default.
                      # Or, explicitly stop then execute. For now, execute_action handles stopping previous.
-
-                print(f"[GPIO] Executing single toggle-ON action: Name='{action_to_trigger['name']}'")
+  
+                action_params_for_on_toggle = None
+                if action_to_trigger['details']['mode'] == 'hdmi_control':
+                    action_params_for_on_toggle = {'target_state': 'off'} # Button ON -> Screen OFF
+                    print(f"[GPIO] HDMI control: Button '{button_on_name}' ON, setting screen OFF.")
+                
+                print(f"[GPIO] Executing single toggle-ON action: Name='{action_to_trigger['name']}', Params: {action_params_for_on_toggle}")
                 self._action_handler.execute_action(
                     name=action_to_trigger['name'],
                     mode=action_to_trigger['details']['mode'],
-                    path=action_to_trigger['details'].get('path')
+                    path=action_to_trigger['details'].get('path'),
+                    action_params=action_params_for_on_toggle
                 )
                 # Clear active combo if a single action overrides
                 if self._active_combination_info and action_to_trigger['name'] != self._active_combination_info['name']:
@@ -259,25 +267,46 @@ class GPIOMonitor(threading.Thread):
             if not button_off_name or self._button_modes.get(button_off_name) != 'toggle':
                 continue
 
-            # If the button toggled OFF was the one sustaining the current single action
+            # Check if this button_off_name is specifically for 'hdmi_control'
+            hdmi_action_details_for_off_toggle: Optional[Dict[str, Any]] = None
+            for item in self._combined_actions:
+                if item['details'].get('button') == button_off_name and item['details']['mode'] == 'hdmi_control':
+                    hdmi_action_details_for_off_toggle = item
+                    break
+            
+            if hdmi_action_details_for_off_toggle:
+                action_params_for_off_toggle = {'target_state': 'on'} # Button OFF -> Screen ON
+                print(f"[GPIO] HDMI control: Button '{button_off_name}' OFF, setting screen ON.")
+                self._action_handler.execute_action(
+                    name=hdmi_action_details_for_off_toggle['name'],
+                    mode=hdmi_action_details_for_off_toggle['details']['mode'],
+                    path=hdmi_action_details_for_off_toggle['details'].get('path'),
+                    action_params=action_params_for_off_toggle
+                )
+                return # Processed HDMI toggle OFF event
+
+            # Original logic for other buttons toggling OFF (reverting to default)
             current_ah_action_name = self._action_handler.current_action_name
-            if current_ah_action_name == button_off_name and not self._active_combination_info : # And no combo is active
-                # Check if this action was indeed a single button action associated with button_off_name
+            # Ensure we are not dealing with hdmi_control here again, as it's handled above.
+            if current_ah_action_name and not self._active_combination_info:
                 is_single_action_match = False
                 for item in self._combined_actions:
                     if item['name'] == current_ah_action_name and item['details'].get('button') == button_off_name:
-                        is_single_action_match = True
+                        # Make sure this is NOT the hdmi_control action we just handled
+                        if item['details']['mode'] != 'hdmi_control':
+                            is_single_action_match = True
                         break
                 
                 if is_single_action_match:
-                    print(f"[GPIO] Single action button '{button_off_name}' toggled OFF. Reverting to default.")
+                    print(f"[GPIO] Single action button '{button_off_name}' (not HDMI) toggled OFF. Reverting to default.")
                     if self._default_media_name:
                         default_media_details = self._config_manager.get_media_config().get(self._default_media_name)
                         if default_media_details:
                             self._action_handler.execute_action(
                                 name=self._default_media_name,
                                 mode=default_media_details['mode'],
-                                path=default_media_details.get('path')
+                                path=default_media_details.get('path'),
+                                action_params=None
                             )
                         else: self._action_handler.stop_current() # Fallback
                     else: self._action_handler.stop_current() # Fallback
@@ -299,7 +328,8 @@ class GPIOMonitor(threading.Thread):
                             self._action_handler.execute_action(
                                 name=self._default_media_name,
                                 mode=default_media_details['mode'],
-                                path=default_media_details.get('path')
+                                path=default_media_details.get('path'),
+                                action_params=None
                             )
                     else: self._action_handler.stop_current() # Fallback
                 else: self._action_handler.stop_current() # Fallback
