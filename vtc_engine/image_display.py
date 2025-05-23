@@ -347,95 +347,121 @@ class ImageDisplay:
         print("[ImageDisplay] Pygame quit.")
 
 if __name__ == '__main__':
-    # Example Usage (for testing purposes)
-    print("Starting ImageDisplay test...")
-    # Parameters from a hypothetical config
-    test_flash_duty_cycle = 0.5  # 50% on
-    test_flash_duration = 2.0    # 2 second cycle
+    import threading
+    import os
 
-    # Example media_config for testing
+    print("Starting ImageDisplay Comprehensive Test...")
+
+    # Configuration for ImageDisplay
+    test_flash_duty_cycle = 0.5  # 50% on time for flashing
+    test_flash_duration = 1.0    # 1 second flash cycle (0.5s on, 0.5s off)
+
+    # Define image paths (ensure these images exist at the specified locations)
+    # Using paths relative to the workspace root, as seen in environment_details
+    image_path_still = "demo3/6_Bahrain flag-1.jpg"
+    image_path_flash = "demo3/5_vtc-1.jpg"
+    scroll_text_file = "test_scroll_text.txt" # Created in the previous step
+
+    # Media configuration for preloading images
+    # The 'path' here is what ImageDisplay uses to load, and what set_image refers to.
     test_media_config = {
-        "image1": {
-            "path": "../vtc_engine/image_sets/set0/photo-1481349518771-20055b2a7b24.jpg",
-            "mode": "image_still",
-            "duration": 5
+        "still_image_test": {
+            "path": image_path_still,
+            "mode": "image_still" # This mode in config is for initial setup, set_image overrides
         },
-        "image2": {
-            "path": "../vtc_engine/image_sets/set1/photo-1504309092620-4d0ec726efa4.jpg",
-            "mode": "image_flash",
-            "duration": 10
-        },
-        "non_image": {
-            "path": "some_video.mp4",
-            "mode": "video_loop"
-        },
-        "missing_path_image": {
-            "mode": "image_still"
-        },
-        "bad_path_image": {
-            "path": "non_existent_image.jpg",
-            "mode": "image_still"
+        "flash_image_test": {
+            "path": image_path_flash,
+            "mode": "image_flash"
         }
     }
 
-    # Example Usage (for testing purposes - needs to be run in the main thread)
-    # To test this, you would typically call image_display.run() from your main application thread.
-    # The following is a conceptual test and won't run as a separate thread anymore.
-
+    # Create ImageDisplay instance
     image_display = ImageDisplay(media_config=test_media_config,
                                  flash_duty_cycle=test_flash_duty_cycle,
                                  flash_duration=test_flash_duration)
 
-    # --- This part would be in your main application logic ---
-    # Start a separate thread to send commands, as image_display.run() will block.
-    def command_sender(display_controller):
+    def command_scheduler(display_controller):
+        """Sends a sequence of commands to the ImageDisplay controller."""
         try:
-            image_path1 = "../vtc_engine/image_sets/set0/photo-1481349518771-20055b2a7b24.jpg"
-            image_path2 = "../vtc_engine/image_sets/set1/photo-1504309092620-4d0ec726efa4.jpg"
-            import os
+            print("[Test] Waiting for Pygame window to initialize (2s)...")
+            time.sleep(2) # Give Pygame a moment to initialize window
 
-            print("Sending: Display image 1 (still) for 5 seconds...")
-            if os.path.exists(image_path1):
-                display_controller.set_image(image_path1, "still")
+            # 1. Test: Display Still Image
+            print(f"[Test] CMD: Display still image: {image_path_still}")
+            if os.path.exists(image_path_still):
+                display_controller.set_image(image_path_still, "still")
+            else:
+                print(f"[Test] Error: Still image not found at {image_path_still}")
+                display_controller.display_text(f"Error: Missing {image_path_still.split('/')[-1]}", color=(255,0,0))
             time.sleep(5)
 
-            print("Sending: Display image 2 (flash) for 10 seconds...")
-            if os.path.exists(image_path2):
-                display_controller.set_image(image_path2, "flash")
-            time.sleep(10)
+            # 2. Test: Display Flashing Image
+            print(f"[Test] CMD: Display flashing image: {image_path_flash}")
+            if os.path.exists(image_path_flash):
+                display_controller.set_image(image_path_flash, "flash")
+            else:
+                print(f"[Test] Error: Flash image not found at {image_path_flash}")
+                display_controller.display_text(f"Error: Missing {image_path_flash.split('/')[-1]}", color=(255,0,0))
+            time.sleep(5) # Display for 5 seconds (5 flash cycles)
 
-            print("Sending: Clear image for 3 seconds...")
+            # 3. Test: Clear Image
+            print("[Test] CMD: Clear image")
             display_controller.clear_image()
             time.sleep(3)
 
-            print("Sending: Display image 1 (flash) again for 10 seconds...")
-            if os.path.exists(image_path1):
-                display_controller.set_image(image_path1, "flash")
-            time.sleep(10)
+            # 4. Test: Display Static Text
+            print("[Test] CMD: Display static text 'Hello World!'")
+            display_controller.display_text("Hello Pygame!", color=(0, 255, 0), bg_color=(50, 50, 50))
+            time.sleep(5)
+
+            # 5. Test: Display Scrolling Text
+            print(f"[Test] CMD: Start scrolling text from {scroll_text_file}")
+            if os.path.exists(scroll_text_file):
+                display_controller.start_scroll_text(
+                    file_path=scroll_text_file,
+                    speed=2,
+                    font_size=50,
+                    font_color_str="yellow",
+                    bg_color_str="navy"
+                )
+            else:
+                print(f"[Test] Error: Scroll text file not found at {scroll_text_file}")
+                display_controller.display_text(f"Error: Missing {scroll_text_file}", color=(255,0,0))
+            time.sleep(15) # Let it scroll for a while
+
+            # 6. Test: Display another static text after scrolling
+            print("[Test] CMD: Display static text 'Test Complete'")
+            display_controller.display_text("Test Complete!", color=(255, 255, 255), bg_color=(0,0,100))
+            time.sleep(5)
 
         except Exception as e:
-            print(f"Command sender error: {e}")
+            print(f"[Test] Command scheduler error: {e}")
         finally:
-            print("Sending: Stop display command...")
+            print("[Test] CMD: Stop display")
             display_controller.stop_display()
 
-    # For testing, we can run command_sender in a thread, and image_display.run() in main.
-    import threading
-    cmd_thread = threading.Thread(target=command_sender, args=(image_display,))
-    cmd_thread.daemon = True # So it exits when main thread (image_display.run) exits
-    
-    print("Starting command sender thread...")
-    cmd_thread.start()
-    
-    print("Calling image_display.run() (this will block until quit)...")
+    # Start the command scheduler in a separate thread
+    # This is crucial because image_display.run() is a blocking call.
+    scheduler_thread = threading.Thread(target=command_scheduler, args=(image_display,))
+    scheduler_thread.daemon = True  # Allows main program to exit even if thread is running
+
+    print("[Test] Starting command scheduler thread...")
+    scheduler_thread.start()
+
+    print("[Test] Calling image_display.run() (blocking call)...")
     try:
-        image_display.run() # This is now a blocking call
+        image_display.run()  # This will block until stop_display() is called or an error occurs
     except KeyboardInterrupt:
-        print("Main loop interrupted by user. Sending stop command.")
-        image_display.stop_display() # Ensure Pygame quits cleanly if run() was interrupted
-        # Wait for run() to finish processing the stop command and quit Pygame
-        # This might require image_display.run() to handle KeyboardInterrupt or have a timeout
-        # For simplicity, we assume stop_display() will lead to run() exiting.
-    
-    # cmd_thread.join() # Wait for command thread to finish (optional, as it's daemon)
-    print("ImageDisplay test finished (or run() exited).")
+        print("[Test] KeyboardInterrupt received. Stopping display...")
+        image_display.stop_display()
+    except Exception as e:
+        print(f"[Test] Error during image_display.run(): {e}")
+        image_display.stop_display() # Attempt to clean up
+    finally:
+        print("[Test] image_display.run() has exited.")
+        if scheduler_thread.is_alive():
+            print("[Test] Waiting for command scheduler thread to finish...")
+            scheduler_thread.join(timeout=5) # Wait for the scheduler to finish
+            if scheduler_thread.is_alive():
+                print("[Test] Warning: Command scheduler thread did not finish cleanly.")
+        print("[Test] ImageDisplay Comprehensive Test Finished.")
