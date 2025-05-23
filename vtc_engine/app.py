@@ -9,8 +9,9 @@ from .config_manager import ConfigManager, ConfigError
 class Application:
     """Main application class."""
 
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str, fullscreen: bool = True):
         self._config_path = config_path
+        self._fullscreen = fullscreen # Store the fullscreen flag
         try:
             self._config_manager = ConfigManager(config_path)
         except ConfigError as e:
@@ -41,7 +42,8 @@ class Application:
             scroll_text_font_color=scroll_text_font_color,
             scroll_text_bg_color=scroll_text_bg_color,
             app_config_path=self._config_manager.get_config_path(),
-            app_ref=self # Pass self (Application instance) to ActionHandler
+            app_ref=self, # Pass self (Application instance) to ActionHandler
+            fullscreen=self._fullscreen # Pass fullscreen flag to ActionHandler
         )
 
     def display_message_on_screen(self, message: str):
@@ -137,7 +139,8 @@ class Application:
             scroll_text_font_color=scroll_text_font_color,
             scroll_text_bg_color=scroll_text_bg_color,
             app_config_path=self._config_manager.get_config_path(), # Use new config path
-            app_ref=self
+            app_ref=self,
+            fullscreen=self._fullscreen # Pass fullscreen flag to ActionHandler
         )
         print("[App] ActionHandler re-initialized.")
 

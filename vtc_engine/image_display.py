@@ -5,7 +5,7 @@ from typing import Optional, Tuple, Dict, Any, List
 import os # Added for directory operations
 
 class ImageDisplay:
-    def __init__(self, media_config: Dict[str, Dict[str, Any]], flash_duty_cycle: float, flash_duration: float):
+    def __init__(self, media_config: Dict[str, Dict[str, Any]], flash_duty_cycle: float, flash_duration: float, fullscreen: bool = True):
         self._flash_duty_cycle = flash_duty_cycle
         self._flash_duration = flash_duration
         self._preloaded_images: Dict[str, List[Tuple[pygame.Surface, Tuple[int, int]]]] = {} # Path maps to a LIST of images
@@ -36,7 +36,10 @@ class ImageDisplay:
         if not pygame.font.get_init():
             pygame.font.init()
         self._font = pygame.font.Font(None, 74) # Default font for static text (display_text)
-        self.screen = pygame.display.set_mode((800, 600)) # Or any other preferred size
+        if fullscreen:
+            self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        else:
+            self.screen = pygame.display.set_mode((800, 600)) # Or any other preferred size
         pygame.display.set_caption("ATC Engine Display")
         self.screen_size = self.screen.get_size()
         pygame.mouse.set_visible(False)

@@ -19,7 +19,8 @@ class ActionHandler:
                  scroll_text_font_color: str,
                  scroll_text_bg_color: Optional[str],
                  app_config_path: str,
-                 app_ref: 'Application'): # Added app_ref
+                 app_ref: 'Application', # Added app_ref
+                 fullscreen: bool):
        self._lock = threading.RLock()
        self._current_action_details: Optional[Dict[str, Any]] = None
        self._image_display_service: Optional[ImageDisplay] = None
@@ -32,6 +33,7 @@ class ActionHandler:
        self._default_scroll_bg_color = scroll_text_bg_color
        self._hdmi_controller = HDMIController()
        self._app_config_path = app_config_path # Store app_config_path
+       self._fullscreen = fullscreen # Store fullscreen flag
        # Pass app_ref to ConfigUpdater instead of self (action_handler_ref)
        self._config_updater = ConfigUpdater(app_ref=app_ref, app_config_path=self._app_config_path)
 
@@ -48,7 +50,8 @@ class ActionHandler:
                 self._image_display_service = ImageDisplay(
                     media_config=self._media_config,
                     flash_duty_cycle=self.flash_duty_cycle,
-                    flash_duration=self.flash_duration
+                    flash_duration=self.flash_duration,
+                    fullscreen=self._fullscreen
                 )
                 print("[ActionHandler] ImageDisplay service instance created.")
 
