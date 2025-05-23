@@ -1,15 +1,22 @@
 import pygame
 import time
 import queue
-from typing import Optional, Tuple, Dict, Any, List # Added List
-  
+from typing import Optional, Tuple, Dict, Any, List
+import os # Added for directory operations
+
 class ImageDisplay:
     def __init__(self, media_config: Dict[str, Dict[str, Any]], flash_duty_cycle: float, flash_duration: float):
         self._flash_duty_cycle = flash_duty_cycle
         self._flash_duration = flash_duration
-        self._preloaded_images: Dict[str, Tuple[pygame.Surface, Tuple[int, int]]] = {}
+        self._preloaded_images: Dict[str, List[Tuple[pygame.Surface, Tuple[int, int]]]] = {} # Path maps to a LIST of images
         self._command_queue = queue.Queue()
         self._is_running_loop = False
+
+        # Slideshow state variables
+        self._current_slideshow_images: List[Tuple[pygame.Surface, Tuple[int, int]]] = []
+        self._current_slideshow_index: int = 0
+        self._slideshow_last_switch_time: float = 0.0
+        self._is_slideshow_active: bool = False
 
         # Scrolling state variables
         self._scrolling_text_lines: Optional[List[str]] = None
@@ -39,14 +46,55 @@ class ImageDisplay:
 
         for media_name, media_details in media_config.items():
             if media_details.get('mode') in ("image_still", "image_flash") and media_details.get('path'):
-                image_path = media_details['path']
-                if image_path not in self._preloaded_images:
-                    surface, pos = self.load_and_scale_image(image_path, self.screen_size)
-                    if surface:
-                        self._preloaded_images[image_path] = (surface, pos)
-                        print(f"[ImageDisplay] Pre-loaded image: {image_path}")
+                dir_path = media_details['path']
+
+                if not os.path.isdir(dir_path):
+                    print(f"[ImageDisplay] Configured path '{dir_path}' for '{media_name}' is not a directory. Skipping preloading for this item.")
+                    # Optionally, could try to load as single file if that's a desired fallback:
+                    # if os.path.isfile(dir_path):
+                    #     surface, pos = self.load_and_scale_image(dir_path, self.screen_size)
+                    #     if surface:
+                    #         self._preloaded_images[dir_path] = [(surface, pos)] # Store as list of one
+                    #         print(f"[ImageDisplay] Pre-loaded single image file: {dir_path}")
+                    #     else:
+                    #         print(f"[ImageDisplay] Failed to pre-load single image file: {dir_path}")
+                    continue
+
+                if dir_path not in self._preloaded_images: # Process each directory only once
+                    loaded_images_for_dir = []
+                    image_files_in_dir = []
+                    valid_extensions = ('.jpg', '.jpeg', '.png', '.gif')
+                    try:
+                        # Sort files for consistent slideshow order
+                        for filename in sorted(os.listdir(dir_path)):
+                            if filename.lower().endswith(valid_extensions):
+                                image_file_path = os.path.join(dir_path, filename)
+                                image_files_in_dir.append(image_file_path)
+                    except OSError as e:
+                        print(f"[ImageDisplay] Error listing directory {dir_path}: {e}")
+                        self._preloaded_images[dir_path] = [] # Mark as processed with error
+                        continue
+
+                    if not image_files_in_dir:
+                        print(f"[ImageDisplay] No valid image files found in directory: {dir_path}")
+                        self._preloaded_images[dir_path] = [] # Mark as processed but empty
+                        continue
+                    
+                    print(f"[ImageDisplay] Found {len(image_files_in_dir)} potential images in {dir_path}. Attempting to load...")
+                    for image_file_path in image_files_in_dir:
+                        surface, pos = self.load_and_scale_image(image_file_path, self.screen_size)
+                        if surface:
+                            loaded_images_for_dir.append((surface, pos))
+                            # print(f"[ImageDisplay] Successfully pre-loaded image: {image_file_path}") # Verbose
+                        else:
+                            print(f"[ImageDisplay] Failed to pre-load image: {image_file_path}")
+                    
+                    if loaded_images_for_dir:
+                        self._preloaded_images[dir_path] = loaded_images_for_dir
+                        print(f"[ImageDisplay] Successfully pre-loaded {len(loaded_images_for_dir)} images from directory: {dir_path}")
                     else:
-                        print(f"[ImageDisplay] Failed to pre-load image: {image_path}")
+                        print(f"[ImageDisplay] Found image files in {dir_path} but failed to load any of them.")
+                        self._preloaded_images[dir_path] = [] # Mark as processed, all failed
 
         self._current_image_surface: Optional[pygame.Surface] = None
         self._current_image_pos: Optional[Tuple[int, int]] = None
@@ -196,51 +244,81 @@ class ImageDisplay:
                     command = self._command_queue.get_nowait()
                     print(f"[ImageDisplay] Dequeued command: {command}")
                     if command['type'] == 'set_image':
-                        path = command['path']
+                        dir_path = command['path'] # This is now a directory path
                         mode = command['mode']
-                        if path in self._preloaded_images:
-                            self._current_image_surface, self._current_image_pos = self._preloaded_images[path]
-                            self._current_image_path = path
-                            self._display_mode = mode # Store original mode for context if needed
-                            self._flash_start_time = time.time() # Reset flash timer
 
-                            if mode == "image_still":
-                                if self._flash_duration > 0:
-                                    self._active_on_time = self._flash_duration # 100% duty cycle
-                                    self._active_off_time = 0.0
-                                else: # If flash_duration is 0, treat as always on
-                                    self._active_on_time = 1.0 # Indicates always on for rendering logic
-                                    self._active_off_time = 0.0
-                            elif mode == "image_flash":
-                                # Use defaults calculated in __init__ based on config
-                                self._active_on_time = self._on_time
-                                self._active_off_time = self._off_time
+                        # Reset slideshow state before setting new image/slideshow
+                        self._is_slideshow_active = False
+                        self._current_slideshow_images = []
+                        self._current_slideshow_index = 0
+                        self._current_image_surface = None # Ensure cleared if path not found or empty
+                        self._current_image_path = None
+
+                        if dir_path in self._preloaded_images:
+                            images_in_dir = self._preloaded_images[dir_path]
+
+                            if not images_in_dir:
+                                print(f"[ImageDisplay] CMD Error: No images successfully pre-loaded for directory: {dir_path}. Skipping display.")
+                                # Keep display clear (already done by clearing _current_image_surface)
+                            elif len(images_in_dir) == 1:
+                                # Single image display
+                                self._current_image_surface, self._current_image_pos = images_in_dir[0]
+                                self._current_image_path = dir_path # Represents the item being displayed
+                                self._display_mode = mode
+                                self._flash_start_time = time.time()
+                                print(f"[ImageDisplay] CMD: Set single image from {dir_path}, Mode: {mode}")
+                            else:
+                                # Multiple images: Start slideshow
+                                self._is_slideshow_active = True
+                                self._current_slideshow_images = images_in_dir
+                                self._current_slideshow_index = 0
+                                self._current_image_surface, self._current_image_pos = self._current_slideshow_images[self._current_slideshow_index]
+                                self._current_image_path = dir_path # Represents the directory slideshow
+                                self._display_mode = mode # This mode applies to each slide
+                                self._flash_start_time = time.time() # For the first image in slideshow
+                                self._slideshow_last_switch_time = time.time()
+                                print(f"[ImageDisplay] CMD: Start slideshow from {dir_path} ({len(images_in_dir)} images), Mode: {mode}")
                             
-                            self._current_text_surface = None # Clear any active text
-                            self._current_text_pos = None
-                            self._is_scrolling = False # Stop scrolling
-                            self._scrolling_text_lines = None
-                            self._current_scroll_surface = None
-                            print(f"[ImageDisplay] CMD: Set image to {path}, Mode: {mode} (Active ON: {self._active_on_time:.2f}, Flash Duration: {self._flash_duration:.2f})")
+                            # Common logic if an image is to be displayed (single or first of slideshow)
+                            if self._current_image_surface:
+                                if mode == "image_still":
+                                    if self._flash_duration > 0: # For slideshow, still image lasts for flash_duration
+                                        self._active_on_time = self._flash_duration
+                                        self._active_off_time = 0.0
+                                    else: # If flash_duration is 0, treat as always on
+                                        self._active_on_time = 1.0
+                                        self._active_off_time = 0.0
+                                elif mode == "image_flash":
+                                    self._active_on_time = self._on_time
+                                    self._active_off_time = self._off_time
+                                
+                                print(f"[ImageDisplay] Effective display mode: {self._display_mode}, Active ON: {self._active_on_time:.2f}s, OFF: {self._active_off_time:.2f}s, Flash Cycle Duration: {self._flash_duration:.2f}s")
                         else:
-                            print(f"[ImageDisplay] CMD Error: Image not pre-loaded: {path}")
+                            print(f"[ImageDisplay] CMD Error: Directory path '{dir_path}' not found in pre-loaded images or failed preloading.")
+                            # Ensure display is clear
                             self._current_image_surface = None
-                            self._current_image_pos = None
                             self._current_image_path = None
-                            self._current_text_surface = None # Also clear text if image loading failed
-                            self._current_text_pos = None
-                            self._is_scrolling = False # Stop scrolling
-                            self._scrolling_text_lines = None
-                            self._current_scroll_surface = None
+                        
+                        # Clear text/scrolling when an image/slideshow command is processed (even if it fails to set an image)
+                        self._current_text_surface = None
+                        self._current_text_pos = None
+                        self._is_scrolling = False
+                        self._scrolling_text_lines = None
+                        self._current_scroll_surface = None
+
                     elif command['type'] == 'clear_image':
                         print(f"[ImageDisplay] CMD: Clear image")
                         self._current_image_surface = None
                         self._current_image_path = None
-                        self._current_text_surface = None # Clear any active text
+                        self._current_text_surface = None
                         self._current_text_pos = None
-                        self._is_scrolling = False # Stop scrolling
+                        self._is_scrolling = False
                         self._scrolling_text_lines = None
                         self._current_scroll_surface = None
+                        # Reset slideshow state as well
+                        self._is_slideshow_active = False
+                        self._current_slideshow_images = []
+                        self._current_slideshow_index = 0
                     elif command['type'] == 'display_text':
                         text_to_display = command['text']
                         text_color = command.get('color', (255, 255, 255))
@@ -337,6 +415,22 @@ class ImageDisplay:
             # Render Logic
             # --- Update Display ---
             self.screen.fill((0, 0, 0)) # Clear screen with black
+
+            # Slideshow advancement logic
+            if self._is_slideshow_active and self._current_slideshow_images and len(self._current_slideshow_images) > 1:
+                # Slide duration is _flash_duration for both still and flash modes in a slideshow.
+                # This is the total time one slide is shown (either statically or flashing).
+                slide_total_duration = self._flash_duration
+
+                if slide_total_duration > 0: # Only switch if duration is meaningful
+                    current_time = time.time()
+                    if (current_time - self._slideshow_last_switch_time >= slide_total_duration):
+                        self._current_slideshow_index = (self._current_slideshow_index + 1) % len(self._current_slideshow_images)
+                        self._current_image_surface, self._current_image_pos = self._current_slideshow_images[self._current_slideshow_index]
+                        self._slideshow_last_switch_time = current_time
+                        self._flash_start_time = current_time # Reset flash timer for the new image in slideshow
+                        # _active_on_time and _active_off_time remain based on the overall slideshow mode
+                        print(f"[ImageDisplay] Slideshow: Switched to image {self._current_slideshow_index + 1}/{len(self._current_slideshow_images)}")
 
             if self._is_scrolling and self._current_scroll_surface:
                 self._current_scroll_x_pos -= self._scroll_speed
